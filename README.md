@@ -11,7 +11,7 @@
 
 ## Status
 
-**v0.1.0 shipped.** Currently testing across Codex and Claude Code in daily driver workflows. Seeking early feedback from developers who live in AI coding agents.
+**v0.1.0 shipped. In dogfood.** Currently testing across Codex and Claude Code in daily driver workflows. Seeking early feedback from developers who live in AI coding agents.
 
 ---
 
