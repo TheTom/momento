@@ -9,4 +9,4 @@ def estimate_tokens(text: str) -> int:
 
     The 2000-token cap is a budget, not a precision target.
     """
-    raise NotImplementedError("tokens.estimate_tokens")
+    return len(text) // 4

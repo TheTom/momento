@@ -1,6 +1,12 @@
 """Knowledge storage — the write path."""
 
+import hashlib
 import sqlite3
+import uuid
+from datetime import datetime, timezone
+
+from momento.models import SIZE_LIMITS, SIZE_HINTS
+from momento.tags import tags_to_json
 
 
 def log_knowledge(
@@ -8,8 +14,8 @@ def log_knowledge(
     content: str,
     type: str,
     tags: list[str],
-    project_id: str,
-    project_name: str,
+    project_id: str | None,
+    project_name: str | None,
     branch: str | None = None,
     source_type: str = "manual",
     confidence: float = 0.9,
@@ -22,4 +28,67 @@ def log_knowledge(
 
     Returns the created entry dict, or error dict on validation failure.
     """
-    raise NotImplementedError("store.log_knowledge")
+    # Size validation
+    if enforce_limits and type in SIZE_LIMITS:
+        limit = SIZE_LIMITS[type]
+        if len(content) > limit:
+            return {
+                "error": f"Content too long: {len(content)} chars exceeds {limit} char limit for {type}.",
+                "hint": SIZE_HINTS[type],
+            }
+
+    # Normalize tags to canonical JSON
+    tags_json = tags_to_json(tags)
+
+    # Content hash for dedup
+    content_hash = hashlib.sha256(content.encode()).hexdigest()
+
+    # Dedup check using COALESCE to handle NULL project_id
+    existing = conn.execute(
+        """SELECT id FROM knowledge
+           WHERE content_hash = ? AND COALESCE(project_id, '__global__') = ?""",
+        (content_hash, project_id if project_id is not None else "__global__"),
+    ).fetchone()
+
+    if existing:
+        return {"id": existing[0], "status": "duplicate_skipped"}
+
+    # Generate entry fields
+    entry_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Insert in transaction
+    try:
+        conn.execute(
+            """INSERT INTO knowledge
+               (id, content, content_hash, type, tags, project_id,
+                project_name, branch, source_type, confidence,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                entry_id, content, content_hash, type, tags_json,
+                project_id, project_name, branch, source_type,
+                confidence, now, now,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO knowledge_stats (entry_id, retrieval_count) VALUES (?, 0)",
+            (entry_id,),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        # Race condition on dedup — another writer got there first
+        existing = conn.execute(
+            """SELECT id FROM knowledge
+               WHERE content_hash = ? AND COALESCE(project_id, '__global__') = ?""",
+            (content_hash, project_id if project_id is not None else "__global__"),
+        ).fetchone()
+        if existing:
+            return {"id": existing[0], "status": "duplicate_skipped"}
+        return {"status": "duplicate_skipped"}
+    except sqlite3.OperationalError as exc:
+        conn.rollback()
+        return {"error": str(exc)}
+
+    return {"id": entry_id, "status": "created"}

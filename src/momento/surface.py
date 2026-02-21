@@ -14,4 +14,22 @@ def detect_surface(cwd: str) -> str | None:
     Case-insensitive. /Server and /server both match.
     Directory-boundary aware: /observer does NOT match server.
     """
-    raise NotImplementedError("surface.detect_surface")
+    if not cwd or cwd == "/":
+        return None
+
+    # Map of exact directory names to surface identifiers
+    surface_map = {
+        "server": "server",
+        "backend": "server",
+        "web": "web",
+        "frontend": "web",
+        "ios": "ios",
+        "android": "android",
+    }
+
+    for segment in cwd.split("/"):
+        match = surface_map.get(segment.lower())
+        if match is not None:
+            return match
+
+    return None

@@ -6,12 +6,13 @@ Tests for `momento status`, `momento save`, `momento undo`,
 
 import json
 import subprocess
+from types import SimpleNamespace
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, MagicMock
 
 import pytest
 
-from momento.cli import main as cli_main
+from momento.cli import main as cli_main, cmd_save
 from momento.store import log_knowledge
 from momento.db import ensure_db
 from momento.retrieve import retrieve_context
@@ -226,6 +227,34 @@ class TestMomentoSave:
         row = cursor.fetchone()
         tags = json.loads(row[0])
         assert "server" in tags, "Tags should include surface tag 'server'"
+
+    def test_save_auto_detects_surface_from_dir(self, db, tmp_path):
+        """save auto-detects surface from args.dir when --surface not provided."""
+        server_dir = tmp_path / "repo" / "server" / "handlers"
+        server_dir.mkdir(parents=True)
+
+        args = SimpleNamespace(
+            content="Auto-surface detection checkpoint.",
+            tags=None,
+            surface=None,
+            dir=str(server_dir),
+        )
+
+        cmd_save(
+            args=args,
+            conn=db,
+            project_id=MOCK_PROJECT_ID,
+            project_name=MOCK_PROJECT_NAME,
+            branch="main",
+        )
+
+        row = db.execute(
+            "SELECT tags FROM knowledge WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
+            (MOCK_PROJECT_ID,),
+        ).fetchone()
+        assert row is not None, "Expected save to insert an entry"
+        tags = json.loads(row[0])
+        assert "server" in tags, "Surface tag should be auto-detected from args.dir"
 
 
 # ===========================================================================

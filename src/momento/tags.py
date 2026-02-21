@@ -1,12 +1,21 @@
 """Tag normalization utilities."""
 
+import json
+
 
 def normalize_tags(tags: list[str]) -> list[str]:
     """Canonicalize tags: lowercase, trim, dedup, sort alphabetically.
 
     Example: [" Auth ", "iOS", "auth"] -> ["auth", "ios"]
     """
-    raise NotImplementedError("tags.normalize_tags")
+    seen = set()
+    result = []
+    for t in tags:
+        normalized = t.strip().lower()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            result.append(normalized)
+    return sorted(result)
 
 
 def tags_to_json(tags: list[str]) -> str:
@@ -14,4 +23,4 @@ def tags_to_json(tags: list[str]) -> str:
 
     Tags must be normalized first. Returns sorted JSON array string.
     """
-    raise NotImplementedError("tags.tags_to_json")
+    return json.dumps(normalize_tags(tags))

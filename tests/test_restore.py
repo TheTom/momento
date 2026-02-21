@@ -504,15 +504,43 @@ def test_tier1_exhausts_budget_no_lower_tiers(db):
     no Tier 2+ entries should be included. Greedy fill, no backtrack.
     """
     # Stuff 15 large session_state entries (quota allows 4+2=6, but
-    # budget should be the binding constraint)
+    # budget should be the binding constraint).
+    # Each entry ~1940 chars content → ~498 tokens rendered.
+    # 4 surface-matched entries × 498 tokens = 1992 tokens → only 8 left,
+    # too small for any lower-tier entry (~17-26 tokens).
     for i in range(15):
         content = (
             f"Session checkpoint {i+1}: migrating handler {i+1} of 15. "
             "Working through the async conversion of all payment handlers. "
-            "Each handler needs careful transaction boundary management. "
-            "Completed the refactoring and all unit tests are passing for "
-            "this batch. Moving on to integration tests next sprint cycle."
-        )[:500]
+            "Each handler needs careful transaction boundary management to ensure "
+            "that database operations are properly committed before returning "
+            "responses to the client. The migration involves converting synchronous "
+            "database calls to use the new async connection pool, updating error "
+            "handling to properly propagate exceptions through the async chain, "
+            "and ensuring that connection cleanup happens correctly even when "
+            "handlers are cancelled mid-execution. Additionally, all logging "
+            "statements need to be updated to use structured logging with proper "
+            "correlation IDs that flow through the async context. The test suite "
+            "for each handler must be updated to use async test fixtures, and "
+            "integration tests need new fixtures for the async database pool. "
+            "Performance benchmarks show a 40 percent reduction in p99 latency "
+            "after conversion, validating the migration approach. Remaining work "
+            "includes PaymentIntentHandler, SubscriptionHandler, InvoiceHandler, "
+            "and WebhookHandler. Each requires approximately 2 hours for the "
+            "conversion plus 1 hour for test updates. The webhook handler is the "
+            "most complex due to its interaction with the external Stripe API and "
+            "the need to maintain idempotency guarantees across async boundaries. "
+            "Current progress: 11 of 15 handlers fully converted and tested in "
+            "the staging environment with no regressions detected. Next sprint "
+            "will focus on the remaining 4 handlers plus the integration test "
+            "suite that covers cross-handler transaction scenarios and rollback "
+            "behavior. Key risk: the WebhookHandler conversion may require "
+            "changes to the idempotency key storage layer, which could impact "
+            "the billing reconciliation service that depends on the same table. "
+            "Mitigation: run dual-write validation for 48 hours before cutting "
+            "over to the new async implementation. Monitoring dashboards have "
+            "been updated with async-specific metrics."
+        )
         insert_entry(db, make_entry(
             content=content,
             type="session_state",
@@ -838,6 +866,54 @@ class TestT48TierQuotaEnforcement:
         ]
         assert len(other_sessions) <= 2, (
             f"Other session quota is 2, got {len(other_sessions)}"
+        )
+
+    def test_session_over_quota_still_allows_lower_tiers_when_budget_remains(self, db):
+        """Session over-quota should not suppress lower tiers when budget remains."""
+        # Create many short session_state entries; quota should cap output to 6.
+        for i in range(10):
+            insert_entry(db, make_entry(
+                content=f"Short session {i+1}.",
+                type="session_state",
+                tags=["server", "checkpoint"],
+                branch="main",
+                surface="server",
+                created_at=minutes_ago(i + 1),
+            ))
+
+        # Add lower-tier entries that should still appear.
+        decision = make_entry(
+            content="Decision: use server-side checkout.",
+            type="decision",
+            tags=["billing", "server"],
+            branch="main",
+            created_at=days_ago(1),
+        )
+        plan = make_entry(
+            content="Plan: phase rollout by surface.",
+            type="plan",
+            tags=["migration"],
+            branch="main",
+            created_at=days_ago(2),
+        )
+        insert_entry(db, decision)
+        insert_entry(db, plan)
+        db.commit()
+
+        result = retrieve_context(
+            db,
+            project_id=MOCK_PROJECT_ID,
+            branch="main",
+            surface="server",
+            query=None,
+            include_session_state=True,
+        )
+
+        assert any(e.type == "decision" for e in result.entries), (
+            "Lower tiers should still be considered after Tier 1 quota is applied"
+        )
+        assert any(e.type == "plan" for e in result.entries), (
+            "Plan entries should still appear when token budget allows"
         )
 
     def test_gotcha_pattern_combined_quota_4(self, db):

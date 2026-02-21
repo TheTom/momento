@@ -228,3 +228,25 @@ class TestSummaryOutput:
         assert result.get("lines_skipped", 0) == 1  # 1 malformed in file1
 
         conn.close()
+
+    def test_summary_skips_unreadable_file_and_continues(self, tmp_path):
+        """Ingestion should skip unreadable files and continue processing others."""
+        pytest.importorskip("momento.ingest", reason="ingest module not yet implemented")
+        from momento.ingest import ingest_files
+
+        db_path = str(tmp_path / "test.db")
+        conn = ensure_db(db_path)
+
+        good_file = _make_valid_jsonl_file(tmp_path, "good.jsonl", num_valid=3, num_malformed=0)
+        missing_file = str(tmp_path / "missing.jsonl")
+
+        result = ingest_files(conn, [good_file, missing_file])
+
+        assert result.get("files_processed", 0) == 1
+        assert result.get("files_skipped", 0) == 1
+        assert result.get("entries_stored", 0) == 3
+
+        count = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+        assert count == 3, "Good file entries should still be ingested"
+
+        conn.close()
