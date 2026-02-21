@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Momento MCP server — exposes retrieve_context and log_knowledge tools."""
 
 import json

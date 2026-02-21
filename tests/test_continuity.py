@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Cross-agent continuity tests — T13.1 and T13.2.
 
 Tests that agent identity has ZERO effect on results.

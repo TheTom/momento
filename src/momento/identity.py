@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Project identity resolution from git and filesystem."""
 
 import hashlib

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
 # Momento — setup & install script
 # Usage:
 #   ./setup.sh          # Interactive install (creates venv, installs package + dev deps)

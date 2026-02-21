@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for retrieve_context restore mode (T4.1–T4.15).
 
 THE CORE TESTS — this is the acceptance surface for Momento's read path.

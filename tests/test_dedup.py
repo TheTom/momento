@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for dedup edge cases (T11.1-T11.2).
 
 Dedup is by content_hash (SHA256). Per-project, not global.

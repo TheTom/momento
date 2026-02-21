@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Concurrency tests — T8.1 through T8.3.
 
 Tests for WAL mode, simultaneous writes, and read-during-write isolation.

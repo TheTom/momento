@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for schema creation and migration (T2.1–T2.6).
 
 These are RED tests — they will fail because features don't exist yet.

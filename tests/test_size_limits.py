@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Entry size limit tests — T9.1 through T9.3.
 
 Tests for MCP size enforcement, CLI bypass, and rejection message quality.

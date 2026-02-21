@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """CLI tests — T7.1 through T7.8.
 
 Tests for `momento status`, `momento save`, `momento undo`,

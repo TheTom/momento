@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Mock data factory for Momento tests.
 
 Generates realistic test entries simulating a payments platform project

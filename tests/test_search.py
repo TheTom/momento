@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for retrieve_context — Search Mode (T5.1-T5.5).
 
 Search mode is FTS5 keyword search, scoped to project + cross-project.

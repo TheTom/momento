@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for project identity resolution (T1.1–T1.9).
 
 These are RED tests — they will fail because features don't exist yet.

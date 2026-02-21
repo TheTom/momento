@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for momento.surface — PRD-mapped surface detection.
 
 Surface mapping is fixed:

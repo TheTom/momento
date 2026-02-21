@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Ingestion tests — T10.1, T10.2, and project/all ingestion.
 
 Tests for partial failure resilience, summary output, compaction extraction,

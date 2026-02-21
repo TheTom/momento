@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Data models for Momento entries."""
 
 from dataclasses import dataclass, field

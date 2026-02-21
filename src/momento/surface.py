@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Surface detection from working directory structure.
 
 Surface is a fixed hint derived from cwd path segments:

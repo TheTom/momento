@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for momento.mcp_server — MCP tool registration and integration.
 
 Covers:

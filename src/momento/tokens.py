@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Token estimation and formatting utilities."""
 
 from datetime import datetime, timezone

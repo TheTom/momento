@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for momento.store — the write path (log_knowledge).
 
 Covers T3.1 through T3.10 from the acceptance test spec.

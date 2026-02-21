@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Shared fixtures for Momento tests.
 
 All DB operations use tmp_path — never touches the real filesystem.

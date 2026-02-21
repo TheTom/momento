@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for cross-project tag matching (T12.1-T12.2).
 
 Cross-project entries appear in Tier 5 of restore mode only when

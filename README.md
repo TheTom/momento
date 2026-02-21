@@ -41,14 +41,14 @@ pip install -e ".[dev]"
 ### Requirements
 
 - Python 3.11+
-- No runtime dependencies (sqlite3 is in the standard library)
+- Runtime dependency: `mcp>=1.0`
 - Dev: pytest >= 8.0, pytest-xdist >= 3.5
 
 ### Verify
 
 ```bash
 momento status          # Should show project info
-pytest tests/ -q        # Should show 198 passed
+pytest tests/ -q        # Should show all tests passing
 ```
 
 ---
@@ -145,7 +145,7 @@ momento prune --auto                              # Auto-prune session_state >7d
 
 ### `momento search "<query>"`
 
-Full-text keyword search via FTS5 (BM25 ranking), scoped to the current project. No tier ordering — pure relevance.
+Full-text keyword search via FTS5 (BM25 ranking), scoped to the current project plus global (`project_id = NULL`) entries. No tier ordering — pure relevance.
 
 ```bash
 momento search "keychain race condition"
@@ -410,7 +410,7 @@ pytest tests/ -m should_pass -v     # Fix-within-days tests
 
 ```bash
 pytest tests/ --cov=momento --cov-branch --cov-report=term-missing
-# Current: 100% line + branch coverage, 198 tests
+# Current: 311 tests passing
 ```
 
 ### Project structure

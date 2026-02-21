@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for tag normalization helpers."""
 
 from momento.tags import normalize_tags, tags_to_json
@@ -10,4 +13,3 @@ def test_normalize_tags_dedups_sorts_and_ignores_blanks():
 
 def test_tags_to_json_uses_canonical_order():
     assert tags_to_json(["stripe", "auth", "stripe"]) == '["auth", "stripe"]'
-
