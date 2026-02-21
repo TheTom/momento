@@ -17,8 +17,6 @@ For a quick overview, see the main [README](../README.md).
 ## Testing
 
 - **[Test Plan](momento-v1-tests.md)** -- Acceptance tests, pre-flight review, and test priority matrix (350 tests passing)
-- **[Test Engineer Notes](momento-test-engineer.md)** -- Test engineering context and methodology
-
 ## FAQ & Guides
 
 - **[FAQ (Markdown)](momento-faq.md)** -- Frequently asked questions
