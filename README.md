@@ -38,6 +38,27 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+### Uninstall
+
+```bash
+# If installed in a virtual environment
+pip uninstall -y momento
+deactivate 2>/dev/null || true
+rm -rf .venv
+
+# If installed with --user
+python3 -m pip uninstall -y momento
+
+# If installed with --global (current interpreter env)
+python3 -m pip uninstall -y momento
+```
+
+Optional data cleanup:
+
+```bash
+rm -rf ~/.momento
+```
+
 ### Requirements
 
 - Python 3.11+
