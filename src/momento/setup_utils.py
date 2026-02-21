@@ -19,6 +19,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 
 # ---------------------------------------------------------------------------
 # MCP Server Registration
@@ -34,6 +35,28 @@ def _mcp_server_config():
         "args": [],
         "env": {"PYTHONUNBUFFERED": "1"},
     }
+
+
+def _ensure_parent_dir(path: str) -> None:
+    """Create parent directory for path if one is present."""
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
+def _write_json_atomic(path: str, data: dict) -> None:
+    """Write JSON atomically to avoid partial/corrupted files."""
+    _ensure_parent_dir(path)
+    parent = os.path.dirname(path) or "."
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=parent, delete=False
+    ) as tmp:
+        json.dump(data, tmp, indent=2)
+        tmp.write("\n")
+        tmp.flush()
+        os.fsync(tmp.fileno())
+        tmp_path = tmp.name
+    os.replace(tmp_path, path)
 
 
 def register_mcp_server(settings_path: str) -> bool:
@@ -55,10 +78,7 @@ def register_mcp_server(settings_path: str) -> bool:
 
         data["mcpServers"]["momento"] = _mcp_server_config()
 
-        os.makedirs(os.path.dirname(settings_path), exist_ok=True)
-        with open(settings_path, "w") as f:
-            json.dump(data, f, indent=2)
-            f.write("\n")
+        _write_json_atomic(settings_path, data)
 
         return True
     except Exception:
@@ -90,9 +110,7 @@ def unregister_mcp_server(settings_path: str) -> bool:
         if not mcp:
             del data["mcpServers"]
 
-        with open(settings_path, "w") as f:
-            json.dump(data, f, indent=2)
-            f.write("\n")
+        _write_json_atomic(settings_path, data)
 
         return True
     except Exception:

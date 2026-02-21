@@ -20,7 +20,7 @@ from momento.setup_utils import (
     generate_codex_adapter,
     remove_codex_adapter,
     main,
-    _MCP_SERVER_CONFIG,
+    _mcp_server_config,
     CLAUDE_ADAPTER_HEADER,
     CLAUDE_ADAPTER_BLOCK,
     CODEX_ADAPTER_CONTENT,
@@ -44,7 +44,7 @@ class TestRegisterMcpServer:
         assert settings.exists()
 
         data = json.loads(settings.read_text())
-        assert data["mcpServers"]["momento"] == _MCP_SERVER_CONFIG
+        assert data["mcpServers"]["momento"] == _mcp_server_config()
 
     @pytest.mark.should_pass
     def test_preserves_existing_keys(self, tmp_path):
@@ -57,7 +57,7 @@ class TestRegisterMcpServer:
         assert result is True
         data = json.loads(settings.read_text())
         assert data["permissions"] == {"allow": ["read"]}
-        assert data["mcpServers"]["momento"] == _MCP_SERVER_CONFIG
+        assert data["mcpServers"]["momento"] == _mcp_server_config()
 
     @pytest.mark.should_pass
     def test_preserves_other_mcp_servers(self, tmp_path):
@@ -75,7 +75,7 @@ class TestRegisterMcpServer:
         assert result is True
         data = json.loads(settings.read_text())
         assert data["mcpServers"]["other_tool"] == {"command": "other", "args": ["--flag"]}
-        assert data["mcpServers"]["momento"] == _MCP_SERVER_CONFIG
+        assert data["mcpServers"]["momento"] == _mcp_server_config()
 
     @pytest.mark.should_pass
     def test_idempotent_overwrite(self, tmp_path):
@@ -90,7 +90,19 @@ class TestRegisterMcpServer:
         data = json.loads(settings.read_text())
         # Only one momento key
         assert list(data["mcpServers"].keys()).count("momento") == 1
-        assert data["mcpServers"]["momento"] == _MCP_SERVER_CONFIG
+        assert data["mcpServers"]["momento"] == _mcp_server_config()
+
+    @pytest.mark.should_pass
+    def test_returns_false_when_existing_json_is_invalid(self, tmp_path):
+        """Invalid existing JSON returns False and is left untouched."""
+        settings = tmp_path / "settings.json"
+        bad_json = '{"mcpServers": {"broken": true},}'
+        settings.write_text(bad_json)
+
+        result = register_mcp_server(str(settings))
+
+        assert result is False
+        assert settings.read_text() == bad_json
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +118,7 @@ class TestUnregisterMcpServer:
         settings = tmp_path / "settings.json"
         data = {
             "mcpServers": {
-                "momento": _MCP_SERVER_CONFIG,
+                "momento": _mcp_server_config(),
                 "other_server": {"command": "other"},
             }
         }
@@ -123,7 +135,7 @@ class TestUnregisterMcpServer:
     def test_removes_empty_mcp_servers_key(self, tmp_path):
         """Cleans up mcpServers key entirely when no servers remain."""
         settings = tmp_path / "settings.json"
-        data = {"mcpServers": {"momento": _MCP_SERVER_CONFIG}, "other": 42}
+        data = {"mcpServers": {"momento": _mcp_server_config()}, "other": 42}
         settings.write_text(json.dumps(data))
 
         result = unregister_mcp_server(str(settings))
@@ -155,6 +167,18 @@ class TestUnregisterMcpServer:
         result = unregister_mcp_server(str(settings))
 
         assert result is True
+
+    @pytest.mark.should_pass
+    def test_returns_false_when_existing_json_is_invalid(self, tmp_path):
+        """Invalid existing JSON returns False and is left untouched."""
+        settings = tmp_path / "settings.json"
+        bad_json = '{"mcpServers": {"broken": true},}'
+        settings.write_text(bad_json)
+
+        result = unregister_mcp_server(str(settings))
+
+        assert result is False
+        assert settings.read_text() == bad_json
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +387,7 @@ class TestSetupUtilsMain:
     def test_unregister_mcp_dispatch(self, tmp_path):
         """main() dispatches unregister_mcp correctly."""
         settings = tmp_path / "settings.json"
-        settings.write_text(json.dumps({"mcpServers": {"momento": _MCP_SERVER_CONFIG}}))
+        settings.write_text(json.dumps({"mcpServers": {"momento": _mcp_server_config()}}))
 
         with patch.object(sys, "argv", ["setup_utils", "unregister_mcp", str(settings)]):
             main()
