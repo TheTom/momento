@@ -9,6 +9,12 @@
 
 ---
 
+## Status
+
+**v0.1.0 shipped.** Currently testing across Codex and Claude Code in daily driver workflows. Seeking early feedback from developers who live in AI coding agents.
+
+---
+
 ## The Problem
 
 AI coding agents forget. Every `/clear`, context overflow, or new session wipes the slate. You spend 5-10 minutes re-explaining architecture, decisions, constraints, and the bug you just fixed.
