@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Momento — setup & install script
 # Usage:
-#   ./setup.sh              # Interactive install (creates venv, installs package + dev deps)
-#   ./setup.sh --user       # Install to user site-packages (no venv)
-#   ./setup.sh --global     # Install to current interpreter environment (no venv)
+#   ./setup.sh              # Interactive install (standard pipx install)
+#   ./setup.sh --user       # Legacy alias (uses standard pipx install)
+#   ./setup.sh --global     # Legacy alias (uses standard pipx install)
 #   ./setup.sh --check      # Verify existing installation
 #   ./setup.sh --uninstall  # Interactive uninstall
 #   ./setup.sh --yes        # Non-interactive (auto-confirm all prompts)
@@ -79,95 +79,55 @@ ensure_data_dir() {
     fi
 }
 
-# --- Venv setup ---
-setup_venv() {
-    if [[ -d "$VENV_DIR" ]]; then
-        # Self-healing: detect broken venvs (stale symlinks from Python upgrades)
-        if [[ ! -x "$VENV_DIR/bin/python3" ]] || ! "$VENV_DIR/bin/python3" -c "import sys" &>/dev/null; then
-            warn "Existing venv is broken (stale Python symlinks), recreating ..."
-            rm -rf "$VENV_DIR"
-            "$PYTHON" -m venv "$VENV_DIR"
-            ok "Virtual environment recreated"
-        else
-            info "Existing venv found at $VENV_DIR"
-        fi
-    else
-        info "Creating virtual environment at $VENV_DIR ..."
-        "$PYTHON" -m venv "$VENV_DIR"
-        ok "Virtual environment created"
+ensure_pipx() {
+    if command -v pipx &>/dev/null; then
+        PIPX="pipx"
+        ok "pipx found: $(command -v pipx)"
+        return 0
     fi
-    # Mark that momento created this venv
-    touch "$VENV_DIR/.momento_created"
-    # shellcheck disable=SC1091
-    source "$VENV_DIR/bin/activate"
-    PYTHON="python3"
-    ok "Activated venv: $VENV_DIR"
-}
 
-# --- Install package ---
-install_package() {
-    local mode="${1:-dev}"
-    info "Installing momento (${mode} mode) ..."
-    if [[ "$mode" == "dev" ]]; then
-        "$PYTHON" -m pip install -e ".[dev]" --quiet
+    warn "pipx not found on PATH. Installing pipx with user pip ..."
+    "$PYTHON" -m pip install --user pipx --quiet || fail "Failed to install pipx"
+
+    if "$PYTHON" -m pipx --version &>/dev/null; then
+        PIPX="$PYTHON -m pipx"
+        ok "pipx installed (python module mode)"
     else
-        "$PYTHON" -m pip install . --quiet
+        fail "pipx installation failed"
     fi
-    ok "Package installed"
 }
 
-# --- Install global (no venv) ---
-install_global() {
-    info "Installing momento to current interpreter environment ..."
-    "$PYTHON" -m pip install -e ".[dev]" --quiet --break-system-packages 2>/dev/null \
-        || "$PYTHON" -m pip install -e ".[dev]" --quiet
-    ok "Package installed (global)"
-}
-
-# --- Install to user site-packages (no venv) ---
-install_user() {
-    info "Installing momento to user site-packages ..."
-    "$PYTHON" -m pip install --user -e ".[dev]" --quiet
-    ok "Package installed (user)"
+install_standard() {
+    info "Installing momento via pipx (standard MCP server install) ..."
+    # Use module mode if needed, otherwise normal executable.
+    if [[ "$PIPX" == "pipx" ]]; then
+        pipx install --force . || fail "pipx install failed"
+    else
+        $PIPX install --force . || fail "pipx install failed"
+    fi
+    ok "Package installed via pipx"
 }
 
 # --- Verify installation ---
 verify() {
     info "Verifying installation ..."
 
-    # Check import
-    if "$PYTHON" -c "import momento; print(f'momento {momento.__version__}')" &>/dev/null; then
-        local ver
-        ver=$("$PYTHON" -c "import momento; print(momento.__version__)")
-        ok "Import works: momento $ver"
-    else
-        fail "Cannot import momento"
-    fi
-
-    # Check CLI entry point
+    # Check CLI entry points
     if command -v momento &>/dev/null; then
         ok "CLI entry point: $(command -v momento)"
     else
-        warn "CLI 'momento' not on PATH (may need to activate venv or restart shell)"
+        fail "CLI 'momento' not on PATH"
+    fi
+    if command -v momento-mcp &>/dev/null; then
+        ok "MCP entry point: $(command -v momento-mcp)"
+    else
+        fail "MCP server 'momento-mcp' not on PATH"
     fi
 
     # Check DB can be created
-    DB_PATH="$DB_PATH" "$PYTHON" -c "
-import os
-from momento.db import ensure_db
-conn = ensure_db(os.environ['DB_PATH'])
-conn.close()
-" && ok "Database OK: $DB_PATH" || fail "Database creation failed"
-
-    # Check test suite (dev mode only)
-    if "$PYTHON" -m pytest --version &>/dev/null; then
-        info "Running tests ..."
-        if "$PYTHON" -m pytest tests/ -q --tb=line 2>&1; then
-            ok "All tests passing"
-        else
-            warn "Some tests failed (see above)"
-        fi
-    fi
+    MOMENTO_DB="$DB_PATH" momento status >/dev/null 2>&1 \
+        && ok "Database OK: $DB_PATH" \
+        || fail "Database creation failed"
 }
 
 # --- MCP & Agent Integration ---
@@ -294,23 +254,17 @@ do_uninstall() {
             fi
         fi
 
-        # Uninstall pip package
-        if confirm "Uninstall momento pip package? [Y/n]"; then
-            "$py" -m pip uninstall -y momento --quiet 2>/dev/null \
-                && ok "Uninstalled momento pip package" \
-                || warn "Could not uninstall momento (may not be installed)"
-        fi
-    fi
-
-    # Remove venv only if .momento_created marker exists
-    if [[ -d "$VENV_DIR" ]]; then
-        if [[ -f "$VENV_DIR/.momento_created" ]]; then
-            if confirm "Remove virtual environment at $VENV_DIR? [Y/n]"; then
-                rm -rf "$VENV_DIR"
-                ok "Removed $VENV_DIR"
+        # Uninstall pipx package
+        if confirm "Uninstall momento pipx package? [Y/n]"; then
+            if command -v pipx &>/dev/null; then
+                pipx uninstall momento >/dev/null 2>&1 \
+                    && ok "Uninstalled momento pipx package" \
+                    || warn "Could not uninstall momento via pipx (may not be installed)"
+            else
+                "$py" -m pipx uninstall momento >/dev/null 2>&1 \
+                    && ok "Uninstalled momento pipx package" \
+                    || warn "Could not uninstall momento via pipx (may not be installed)"
             fi
-        else
-            info "Skipping $VENV_DIR — not created by Momento (no .momento_created marker)"
         fi
     fi
 
@@ -390,15 +344,12 @@ main() {
     # Step 2: Data directory
     ensure_data_dir
 
-    # Step 3: Install
-    if [[ "$mode" == "global" ]]; then
-        install_global
-    elif [[ "$mode" == "user" ]]; then
-        install_user
-    else
-        setup_venv
-        install_package "dev"
+    # Step 3: Install (standardized)
+    if [[ "$mode" == "global" || "$mode" == "user" ]]; then
+        warn "--$mode is now a legacy alias. Using standard pipx installation."
     fi
+    ensure_pipx
+    install_standard
 
     # Step 4: Verify
     verify
@@ -411,12 +362,8 @@ main() {
     echo ""
     ok "Momento installed successfully!"
     echo ""
-    if [[ "$mode" == "" ]]; then
-        info "Activate the venv:  source ${VENV_DIR}/bin/activate"
-    fi
     info "Run the CLI:        momento status"
-    info "Run tests:          pytest tests/ -v"
-    info "Check coverage:     pytest tests/ --cov=momento --cov-branch"
+    info "Run MCP server:     momento-mcp"
     echo ""
 }
 

@@ -25,8 +25,8 @@ import sys
 # ---------------------------------------------------------------------------
 
 _MCP_SERVER_CONFIG = {
-    "command": "python3",
-    "args": ["-m", "momento.mcp_server"],
+    "command": "momento-mcp",
+    "args": [],
     "env": {"PYTHONUNBUFFERED": "1"},
 }
 

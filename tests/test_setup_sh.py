@@ -138,8 +138,8 @@ class TestSetupShFlags:
         settings_data = {
             "mcpServers": {
                 "momento": {
-                    "command": "python3",
-                    "args": ["-m", "momento.mcp_server"],
+                    "command": "momento-mcp",
+                    "args": [],
                     "env": {"PYTHONUNBUFFERED": "1"},
                 },
                 "other_server": {"command": "node", "args": ["server.js"]},
@@ -211,7 +211,7 @@ class TestSetupShFlags:
 
     @pytest.mark.should_pass
     def test_uninstall_skips_venv_without_marker(self, tmp_path):
-        """.venv without .momento_created marker is left untouched."""
+        """.venv directories are untouched by standardized pipx uninstall."""
         tmp_home, tmp_project = _make_sandbox(tmp_path)
 
         # Create .venv in sandboxed project dir (no marker)
@@ -224,7 +224,7 @@ class TestSetupShFlags:
 
     @pytest.mark.should_pass
     def test_uninstall_removes_venv_with_marker(self, tmp_path):
-        """.venv WITH .momento_created marker is removed by --uninstall --yes."""
+        """.venv with marker is also untouched by standardized pipx uninstall."""
         tmp_home, tmp_project = _make_sandbox(tmp_path)
 
         # Create .venv with the momento marker in sandboxed project dir
@@ -234,4 +234,4 @@ class TestSetupShFlags:
 
         _run_setup(["--uninstall", "--yes"], tmp_home, tmp_project)
 
-        assert not venv_dir.exists()
+        assert venv_dir.exists()

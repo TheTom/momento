@@ -98,5 +98,10 @@ def log_knowledge(content: str, type: str, tags: list[str]) -> str:
 # Entry point
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":  # pragma: no cover
+def main():  # pragma: no cover
+    """Entry point for the momento-mcp console script."""
     server.run()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()

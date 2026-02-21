@@ -4,7 +4,7 @@
 
 Momento is a local memory layer that restores context when your AI coding agent forgets. After a `/clear`, session reset, or context overflow, Momento reconstructs the agent's working state in under 2 seconds — decisions made, bugs discovered, tasks in progress, and what comes next.
 
-Zero external dependencies. SQLite-backed. Works with any AI coding agent.
+SQLite-backed. Works with any AI coding agent.
 
 ---
 
@@ -13,7 +13,6 @@ Zero external dependencies. SQLite-backed. Works with any AI coding agent.
 ```bash
 git clone <repo-url> && cd momento
 ./setup.sh
-source .venv/bin/activate
 momento status
 ```
 
@@ -24,18 +23,16 @@ momento status
 ### Automated (Recommended)
 
 ```bash
-./setup.sh            # Creates .venv, installs package + dev deps
-./setup.sh --user     # Install to user site-packages (no venv)
-./setup.sh --global   # Install to current Python environment (no venv)
+./setup.sh            # Standard install via pipx
 ./setup.sh --check    # Verify existing installation
 ```
 
 ### Manual
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+pipx install .
+# for local development from repo checkout:
+pipx install --force .
 ```
 
 ### Uninstall
@@ -45,7 +42,7 @@ pip install -e ".[dev]"
 ./setup.sh --uninstall --yes  # Non-interactive: removes everything except data
 ```
 
-Removes: pip package, MCP config, CLAUDE.md adapter, .codex\_instructions.md, .venv (if created by momento).
+Removes: pipx package, MCP config, CLAUDE.md adapter, .codex\_instructions.md.
 
 To also remove your knowledge database:
 
@@ -56,6 +53,7 @@ rm -rf ~/.momento
 ### Requirements
 
 - Python 3.11+
+- pipx
 - Runtime dependency: `mcp>=1.0`
 - Dev: pytest >= 8.0, pytest-xdist >= 3.5
 
@@ -205,8 +203,8 @@ Register Momento as an MCP server (handled automatically by `./setup.sh`):
 {
   "mcpServers": {
     "momento": {
-      "command": "python3",
-      "args": ["-m", "momento.mcp_server"],
+      "command": "momento-mcp",
+      "args": [],
       "env": {
         "PYTHONUNBUFFERED": "1"
       }
@@ -241,7 +239,7 @@ Store a knowledge entry.
 ### Running Manually
 
 ```bash
-python3 -m momento.mcp_server    # Starts stdio MCP server
+momento-mcp    # Starts stdio MCP server
 ```
 
 ### Agent Adapters
@@ -493,10 +491,10 @@ momento debug-restore    # Shows tier breakdown and skip reasons
 ### Search returns nothing
 FTS5 is keyword-based. Try exact terms from entry content. For tag-based lookup, use `momento inspect --tags <tag>`.
 
-### CLI not found after install
+### CLI or MCP command not found after install
 ```bash
-source .venv/bin/activate    # If using venv
-# Or: export PATH="$HOME/.local/bin:$PATH"  # If using --user
+export PATH="$HOME/.local/bin:$PATH"
+# and restart your shell if needed
 ```
 
 ---

@@ -17,6 +17,7 @@ dev = [
 
 [project.scripts]
 momento = "momento.cli:main"
+momento-mcp = "momento.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
