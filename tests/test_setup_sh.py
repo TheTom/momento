@@ -3,50 +3,68 @@
 
 """Shell integration tests for setup.sh.
 
-Tests exercise the setup.sh script via subprocess.run with sandboxed HOME
-directories to avoid touching real user config. Each test uses tmp_path
-for isolation.
+Tests exercise the setup.sh script via subprocess.run with FULLY sandboxed
+environments — both HOME and the script's working directory are temp dirs.
+This prevents uninstall tests from nuking the real .venv.
+
+Key isolation strategy: copy setup.sh to a temp "project" directory so that
+`cd "$(dirname "$0")"` (the last line of setup.sh) operates on the sandbox,
+not the real project root.
 """
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
-# setup.sh lives at the project root, one level above tests/
-SETUP_SH = str(Path(__file__).parent.parent / "setup.sh")
+# Real paths for reference
+PROJECT_ROOT = Path(__file__).parent.parent
+SETUP_SH = PROJECT_ROOT / "setup.sh"
+SRC_DIR = str(PROJECT_ROOT / "src")
 
-# src/ directory for PYTHONPATH so momento.setup_utils is importable
-SRC_DIR = str(Path(__file__).parent.parent / "src")
+
+def _make_sandbox(tmp_path: Path) -> tuple[Path, Path]:
+    """Create a fully sandboxed environment for setup.sh tests.
+
+    Returns (tmp_home, tmp_project) where:
+    - tmp_home: sandboxed HOME directory
+    - tmp_project: directory containing a copy of setup.sh
+    """
+    tmp_home = tmp_path / "home"
+    tmp_home.mkdir()
+
+    tmp_project = tmp_path / "project"
+    tmp_project.mkdir()
+
+    # Copy setup.sh so cd "$(dirname "$0")" stays in the sandbox
+    shutil.copy2(SETUP_SH, tmp_project / "setup.sh")
+
+    return tmp_home, tmp_project
 
 
 def _run_setup(
     args: list[str],
     tmp_home: Path,
+    tmp_project: Path,
     *,
-    cwd: str | None = None,
     stdin=None,
     timeout: int = 30,
-    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
-    """Run setup.sh with a sandboxed HOME and inherited PATH/PYTHONPATH."""
+    """Run sandboxed setup.sh with isolated HOME and project directory."""
     env = {
         **os.environ,
         "HOME": str(tmp_home),
-        # Ensure momento package is importable for setup_utils calls
         "PYTHONPATH": SRC_DIR + os.pathsep + os.environ.get("PYTHONPATH", ""),
     }
-    if extra_env:
-        env.update(extra_env)
 
     return subprocess.run(
-        ["bash", SETUP_SH, *args],
+        ["bash", str(tmp_project / "setup.sh"), *args],
         capture_output=True,
         text=True,
         timeout=timeout,
-        cwd=cwd,
         stdin=stdin,
         env=env,
     )
@@ -63,13 +81,10 @@ class TestSetupShFlags:
     @pytest.mark.should_pass
     def test_yes_flag_skips_prompts(self, tmp_path):
         """--yes --uninstall completes without hanging for input."""
-        tmp_home = tmp_path / "home"
-        tmp_home.mkdir()
+        tmp_home, tmp_project = _make_sandbox(tmp_path)
 
-        # Use --uninstall (fast) instead of --check (runs full test suite)
-        result = _run_setup(["--yes", "--uninstall"], tmp_home, timeout=30)
+        result = _run_setup(["--yes", "--uninstall"], tmp_home, tmp_project)
 
-        # Should complete without blocking on any prompt
         combined = result.stdout + result.stderr
         assert "Unknown option" not in combined
         assert "auto-yes" in combined or "Uninstall complete" in combined
@@ -77,28 +92,24 @@ class TestSetupShFlags:
     @pytest.mark.should_pass
     def test_no_tty_auto_defaults_yes(self, tmp_path):
         """Non-TTY stdin auto-defaults to yes mode (no hanging)."""
-        tmp_home = tmp_path / "home"
-        tmp_home.mkdir()
+        tmp_home, tmp_project = _make_sandbox(tmp_path)
 
-        # Use --uninstall (fast) with piped stdin (non-TTY)
         result = _run_setup(
             ["--uninstall"],
             tmp_home,
+            tmp_project,
             stdin=subprocess.DEVNULL,
-            timeout=30,
         )
 
-        # Should not hang — non-TTY triggers YES_MODE=true
         combined = result.stdout + result.stderr
         assert "Unknown option" not in combined
 
     @pytest.mark.should_pass
     def test_unknown_flag_fails(self, tmp_path):
         """--bogus should fail with non-zero exit and 'Unknown option' message."""
-        tmp_home = tmp_path / "home"
-        tmp_home.mkdir()
+        tmp_home, tmp_project = _make_sandbox(tmp_path)
 
-        result = _run_setup(["--bogus"], tmp_home, timeout=30)
+        result = _run_setup(["--bogus"], tmp_home, tmp_project)
 
         assert result.returncode != 0
         combined = result.stdout + result.stderr
@@ -107,29 +118,18 @@ class TestSetupShFlags:
     @pytest.mark.should_pass
     def test_yes_and_uninstall_combined(self, tmp_path):
         """--yes and --uninstall flags work together without conflict."""
-        tmp_home = tmp_path / "home"
-        tmp_home.mkdir()
+        tmp_home, tmp_project = _make_sandbox(tmp_path)
 
-        result = _run_setup(["--yes", "--uninstall"], tmp_home, timeout=30)
+        result = _run_setup(["--yes", "--uninstall"], tmp_home, tmp_project)
 
-        # Should not error on flag parsing
         combined = result.stdout + result.stderr
         assert "Unknown option" not in combined
         assert "Uninstall complete" in combined
 
     @pytest.mark.should_pass
     def test_uninstall_yes_cleans_integration_files(self, tmp_path):
-        """--uninstall --yes removes MCP config, CLAUDE.md adapter, and codex file.
-
-        Sets up a sandboxed HOME with:
-        - ~/.claude/settings.json containing momento MCP server config
-        - ~/.claude/CLAUDE.md with the Momento adapter section
-        And a .codex_instructions.md in the project root (where setup.sh cds to).
-
-        After --uninstall --yes, all three should be cleaned up.
-        """
-        tmp_home = tmp_path / "home"
-        tmp_home.mkdir()
+        """--uninstall --yes removes MCP config, CLAUDE.md adapter, and codex file."""
+        tmp_home, tmp_project = _make_sandbox(tmp_path)
 
         # Create ~/.claude/settings.json with momento MCP server
         claude_dir = tmp_home / ".claude"
@@ -176,125 +176,62 @@ class TestSetupShFlags:
             "  Use the Historical Slice structure.\n"
         )
 
-        # setup.sh does `cd "$(dirname "$0")"` so .codex_instructions.md
-        # is checked relative to the script's own directory (project root).
-        # We create it there in a way the sandboxed uninstall can find it.
-        project_root = Path(__file__).parent.parent
-        codex_file = project_root / ".codex_instructions.md"
+        # Create .codex_instructions.md in the sandboxed project dir
+        codex_file = tmp_project / ".codex_instructions.md"
         codex_file.write_text("## Momento Checkpointing and Context Recovery\n")
 
-        try:
-            result = _run_setup(["--uninstall", "--yes"], tmp_home, timeout=30)
+        result = _run_setup(["--uninstall", "--yes"], tmp_home, tmp_project)
 
-            # Verify settings.json no longer has the momento key
-            updated_settings = json.loads(settings_file.read_text())
-            assert "momento" not in updated_settings.get("mcpServers", {})
-            # other_server should still be there
-            assert "other_server" in updated_settings.get("mcpServers", {})
+        # Verify settings.json no longer has the momento key
+        updated_settings = json.loads(settings_file.read_text())
+        assert "momento" not in updated_settings.get("mcpServers", {})
+        assert "other_server" in updated_settings.get("mcpServers", {})
 
-            # Verify CLAUDE.md no longer has the Momento adapter
-            updated_claude = claude_md.read_text()
-            assert "Momento Context Recovery" not in updated_claude
-            # Existing content should be preserved
-            assert "My Config" in updated_claude
+        # Verify CLAUDE.md no longer has the Momento adapter
+        updated_claude = claude_md.read_text()
+        assert "Momento Context Recovery" not in updated_claude
+        assert "My Config" in updated_claude
 
-            # Verify .codex_instructions.md was removed
-            assert not codex_file.exists()
-        finally:
-            # Clean up the codex file in case the test fails partway through
-            if codex_file.exists():
-                codex_file.unlink()
+        # Verify .codex_instructions.md was removed
+        assert not codex_file.exists()
 
     @pytest.mark.should_pass
     def test_uninstall_preserves_data_dir_in_yes_mode(self, tmp_path):
         """--uninstall --yes does NOT remove ~/.momento (auto-NO for data dir)."""
-        tmp_home = tmp_path / "home"
-        tmp_home.mkdir()
+        tmp_home, tmp_project = _make_sandbox(tmp_path)
 
-        # Create the data directory
         momento_dir = tmp_home / ".momento"
         momento_dir.mkdir()
         (momento_dir / "knowledge.db").write_text("fake db")
 
-        result = _run_setup(["--uninstall", "--yes"], tmp_home, timeout=30)
+        _run_setup(["--uninstall", "--yes"], tmp_home, tmp_project)
 
-        # Data dir should still exist — --yes defaults to NO for data removal
         assert momento_dir.exists()
         assert (momento_dir / "knowledge.db").exists()
 
     @pytest.mark.should_pass
     def test_uninstall_skips_venv_without_marker(self, tmp_path):
         """.venv without .momento_created marker is left untouched."""
-        tmp_home = tmp_path / "home"
-        tmp_home.mkdir()
+        tmp_home, tmp_project = _make_sandbox(tmp_path)
 
-        # setup.sh does cd to its own dir, so .venv is relative to project root.
-        # We can't create a .venv in the real project root safely, so we
-        # create a temporary project-like directory and symlink/copy setup.sh.
-        # However, setup.sh hardcodes `cd "$(dirname "$0")"`, so the venv
-        # check happens in the script's directory.
-        #
-        # For this test, we create .venv in the project root temporarily.
-        project_root = Path(__file__).parent.parent
-        venv_dir = project_root / ".venv"
-        marker = venv_dir / ".momento_created"
+        # Create .venv in sandboxed project dir (no marker)
+        venv_dir = tmp_project / ".venv"
+        venv_dir.mkdir()
 
-        # Only run if .venv doesn't already exist (don't clobber real venvs)
-        if venv_dir.exists():
-            # If a real .venv exists, verify the marker status and skip
-            # the creation step — just ensure the test logic is valid
-            had_marker = marker.exists()
-            if had_marker:
-                # Temporarily remove the marker to test
-                marker.unlink()
-            try:
-                result = _run_setup(
-                    ["--uninstall", "--yes"], tmp_home, timeout=30
-                )
-                # .venv should still exist since there's no marker
-                assert venv_dir.exists()
-            finally:
-                if had_marker:
-                    marker.touch()
-        else:
-            # Create a fake .venv WITHOUT the marker
-            venv_dir.mkdir()
-            try:
-                result = _run_setup(
-                    ["--uninstall", "--yes"], tmp_home, timeout=30
-                )
-                assert venv_dir.exists()
-            finally:
-                venv_dir.rmdir()
+        _run_setup(["--uninstall", "--yes"], tmp_home, tmp_project)
+
+        assert venv_dir.exists()
 
     @pytest.mark.should_pass
     def test_uninstall_removes_venv_with_marker(self, tmp_path):
         """.venv WITH .momento_created marker is removed by --uninstall --yes."""
-        tmp_home = tmp_path / "home"
-        tmp_home.mkdir()
+        tmp_home, tmp_project = _make_sandbox(tmp_path)
 
-        # setup.sh cds to its own dir, so .venv lives at the project root
-        project_root = Path(__file__).parent.parent
-        venv_dir = project_root / ".venv"
-
-        # Guard: don't clobber a real .venv
-        if venv_dir.exists():
-            pytest.skip(
-                ".venv already exists in project root; "
-                "skipping destructive test to avoid clobbering real venv"
-            )
-
-        # Create a fake .venv with the momento marker
+        # Create .venv with the momento marker in sandboxed project dir
+        venv_dir = tmp_project / ".venv"
         venv_dir.mkdir()
         (venv_dir / ".momento_created").touch()
 
-        try:
-            result = _run_setup(["--uninstall", "--yes"], tmp_home, timeout=30)
+        _run_setup(["--uninstall", "--yes"], tmp_home, tmp_project)
 
-            # .venv should have been removed
-            assert not venv_dir.exists()
-        finally:
-            # Safety net: clean up if the test didn't remove it
-            if venv_dir.exists():
-                import shutil
-                shutil.rmtree(venv_dir)
+        assert not venv_dir.exists()

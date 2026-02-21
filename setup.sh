@@ -82,7 +82,15 @@ ensure_data_dir() {
 # --- Venv setup ---
 setup_venv() {
     if [[ -d "$VENV_DIR" ]]; then
-        info "Existing venv found at $VENV_DIR"
+        # Self-healing: detect broken venvs (stale symlinks from Python upgrades)
+        if [[ ! -x "$VENV_DIR/bin/python3" ]] || ! "$VENV_DIR/bin/python3" -c "import sys" &>/dev/null; then
+            warn "Existing venv is broken (stale Python symlinks), recreating ..."
+            rm -rf "$VENV_DIR"
+            "$PYTHON" -m venv "$VENV_DIR"
+            ok "Virtual environment recreated"
+        else
+            info "Existing venv found at $VENV_DIR"
+        fi
     else
         info "Creating virtual environment at $VENV_DIR ..."
         "$PYTHON" -m venv "$VENV_DIR"
