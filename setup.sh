@@ -106,6 +106,16 @@ install_standard() {
         $PIPX install --force . || fail "pipx install failed"
     fi
     ok "Package installed via pipx"
+
+    # Resolve the Python inside pipx's venv for setup_utils calls
+    local pipx_venvs
+    pipx_venvs="$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null || echo "$HOME/.local/pipx/venvs")"
+    if [[ -x "$pipx_venvs/momento/bin/python3" ]]; then
+        PIPX_PYTHON="$pipx_venvs/momento/bin/python3"
+    else
+        PIPX_PYTHON="$PYTHON"
+        warn "Could not locate pipx venv Python — setup_utils may fail"
+    fi
 }
 
 # --- Verify installation ---
@@ -133,7 +143,7 @@ verify() {
 # --- MCP & Agent Integration ---
 register_mcp_server() {
     local settings_file="$HOME/.claude/settings.json"
-    local py="${1:-$PYTHON}"
+    local py="${PIPX_PYTHON:-$PYTHON}"
 
     "$py" -m momento.setup_utils register_mcp "$settings_file" \
         && ok "Registered MCP server in $settings_file" \
@@ -142,7 +152,7 @@ register_mcp_server() {
 
 add_claude_adapter() {
     local claude_md="$HOME/.claude/CLAUDE.md"
-    local py="${1:-$PYTHON}"
+    local py="${PIPX_PYTHON:-$PYTHON}"
 
     "$py" -m momento.setup_utils add_claude_adapter "$claude_md" \
         && ok "Momento adapter present in $claude_md" \
@@ -151,7 +161,7 @@ add_claude_adapter() {
 
 generate_codex_adapter() {
     local codex_file="./.codex_instructions.md"
-    local py="${1:-$PYTHON}"
+    local py="${PIPX_PYTHON:-$PYTHON}"
 
     "$py" -m momento.setup_utils generate_codex_adapter "$codex_file" \
         && ok "Generated $codex_file" \
@@ -209,10 +219,12 @@ do_uninstall() {
     info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
-    # Find a working python — prefer venv, fall back to system
+    # Find a working python — prefer pipx venv, fall back to system
     local py=""
-    if [[ -f "$VENV_DIR/bin/python3" ]]; then
-        py="$VENV_DIR/bin/python3"
+    local pipx_venvs
+    pipx_venvs="$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null || echo "$HOME/.local/pipx/venvs")"
+    if [[ -x "$pipx_venvs/momento/bin/python3" ]]; then
+        py="$pipx_venvs/momento/bin/python3"
     else
         for candidate in python3 python; do
             if command -v "$candidate" &>/dev/null; then
