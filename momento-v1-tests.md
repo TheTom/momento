@@ -842,18 +842,18 @@ This is the acceptance test. If this works, ship.
 
 ### T14: Setup & Uninstall
 
-**T14.1 — MCP server registration creates valid settings.json** `should_pass`
+**T14.1 — MCP server registration creates valid claude.json** `should_pass`
 ```
-Given: no settings.json exists
-When: register_mcp_server(settings_path)
-Then: settings.json created with valid JSON
-      mcpServers.momento has correct command, args, env
+Given: no ~/.claude.json exists
+When: register_mcp_server(claude_json_path)
+Then: ~/.claude.json created with valid JSON
+      mcpServers.momento has absolute path to momento-mcp, empty args, PYTHONUNBUFFERED env
 ```
 
 **T14.2 — MCP server unregistration preserves other servers** `should_pass`
 ```
-Given: settings.json with momento + other_tool MCP servers
-When: unregister_mcp_server(settings_path)
+Given: ~/.claude.json with momento + other_tool MCP servers
+When: unregister_mcp_server(claude_json_path)
 Then: momento removed, other_tool preserved
       mcpServers key still present (not empty-cleaned)
 ```
@@ -868,19 +868,20 @@ Then: adapter appears once after adds, fully removed after remove
 
 **T14.4 — Uninstall cleans up all integration files** `should_pass`
 ```
-Given: settings.json with momento, CLAUDE.md with adapter, .codex_instructions.md
+Given: ~/.claude.json with momento, CLAUDE.md with adapter, .codex_instructions.md
 When: setup.sh --uninstall --yes
-Then: momento removed from settings.json
+Then: momento removed from ~/.claude.json
       adapter removed from CLAUDE.md
       .codex_instructions.md deleted
+      pipx package uninstalled
 ```
 
-**T14.5 — Venv only removed with marker** `should_pass`
+**T14.5 — Venv directories untouched by pipx uninstall** `should_pass`
 ```
-Given: .venv directory exists
+Given: .venv directory exists (with or without .momento_created marker)
 When: setup.sh --uninstall --yes
-Then: .venv removed only if .momento_created marker exists
-      .venv preserved if marker absent
+Then: .venv directory is always preserved
+      pipx manages its own isolated venvs, not project .venv
 ```
 
 **T14.6 — --yes flag skips interactive prompts** `should_pass`
@@ -897,6 +898,22 @@ Given: setup.sh invoked with stdin not connected to TTY (piped)
 When: any confirmation prompt is reached
 Then: auto-confirms without waiting for input
       same behavior as --yes flag
+```
+
+**T14.8 — Atomic JSON writes prevent corruption** `should_pass`
+```
+Given: valid ~/.claude.json exists
+When: register_mcp_server() writes new config
+Then: write uses tempfile + os.replace (atomic)
+      partial writes never leave corrupted JSON
+```
+
+**T14.9 — Invalid JSON returns False without modification** `should_pass`
+```
+Given: ~/.claude.json contains malformed JSON (e.g., trailing comma)
+When: register_mcp_server() or unregister_mcp_server() is called
+Then: returns False
+      file contents are unchanged (no partial overwrite)
 ```
 
 ---
@@ -937,11 +954,13 @@ SHOULD PASS (ship without, fix fast):
   T7.3   momento save
   T8.2   Simultaneous writes
   T11.1  Cross-project dedup (NULL handling)
-  T14.1  MCP server registration
+  T14.1  MCP server registration (claude.json)
   T14.4  Uninstall cleans up integration files
-  T14.5  Venv marker protection
+  T14.5  Venv untouched by pipx uninstall
   T14.6  --yes flag skips prompts
   T14.7  Non-TTY defaults to yes
+  T14.8  Atomic JSON writes
+  T14.9  Invalid JSON graceful failure
 
 NICE TO HAVE (v0.1.1):
   T1.7   Branch rename degradation
@@ -982,8 +1001,8 @@ Final review:
 7. Search mode pure FTS5 relevance (no restore ranking bleed)
 8. knowledge_stats separate table (retrieval_count + COALESCE dedup)
 
-**Total tests: 82 across 14 subsystems**
+**Total tests: 84 across 14 subsystems**
 - 15 must-pass (blocks ship)
-- 18 should-pass (fix within days)
+- 20 should-pass (fix within days)
 - 13 nice-to-have (v0.1.1)
 - 36 remaining (full coverage)

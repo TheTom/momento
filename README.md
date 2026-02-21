@@ -198,12 +198,12 @@ Momento exposes two MCP tools for AI coding agents. The server is stateless — 
 
 Register Momento as an MCP server (handled automatically by `./setup.sh`):
 
-**Claude Code** (`~/.claude.json`):
+**Claude Code** (`~/.claude.json` — NOT `~/.claude/settings.json`):
 ```json
 {
   "mcpServers": {
     "momento": {
-      "command": "momento-mcp",
+      "command": "/Users/you/.local/bin/momento-mcp",
       "args": [],
       "env": {
         "PYTHONUNBUFFERED": "1"
@@ -212,6 +212,8 @@ Register Momento as an MCP server (handled automatically by `./setup.sh`):
   }
 }
 ```
+
+> **Note:** `setup.sh` automatically resolves the absolute path to `momento-mcp` and writes it to `~/.claude.json`. Using the absolute path ensures Claude Code finds the binary regardless of its shell PATH.
 
 ### Tools
 
@@ -423,7 +425,7 @@ pytest tests/ -m should_pass -v     # Fix-within-days tests
 
 ```bash
 pytest tests/ --cov=momento --cov-branch --cov-report=term-missing
-# Current: 311 tests passing
+# Current: 350 tests passing
 ```
 
 ### Project structure
@@ -435,9 +437,10 @@ src/momento/
   db.py             # Schema, WAL, FTS5 triggers, migrations
   identity.py       # Git-based project resolution
   ingest.py         # JSONL batch ingestion + session log extraction
-  mcp_server.py     # MCP server (retrieve_context, log_knowledge)
+  mcp_server.py     # MCP server (retrieve_context, log_knowledge) + momento-mcp entry point
   models.py         # Entry/RestoreResult dataclasses, SIZE_LIMITS
   retrieve.py       # 5-tier restore + FTS5 search
+  setup_utils.py    # MCP registration, CLAUDE.md adapter, Codex adapter (atomic JSON writes)
   store.py          # Write path with dedup + size validation
   surface.py        # Surface detection (mapped keywords: server/backend/web/frontend/ios/android)
   tags.py           # Tag normalization (lowercase, sort, dedup)
@@ -453,9 +456,12 @@ tests/
   test_dedup.py
   test_identity.py
   test_ingestion.py
+  test_mcp_server.py
   test_restore.py   # Core restore contract (50+ tests)
   test_schema.py
   test_search.py
+  test_setup_sh.py  # Integration tests for setup.sh flags and sandboxed uninstall
+  test_setup_utils.py  # Unit tests for MCP registration, adapters, atomic writes
   test_size_limits.py
   test_store.py
   test_surface.py
