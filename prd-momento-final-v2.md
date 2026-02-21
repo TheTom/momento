@@ -958,6 +958,35 @@ Historical Slice structure:
 
 Each adapter is a single instruction file. No code changes to Momento's core. No schema changes. No new MCP tools. Just different words telling different agents when to call the same two tools.
 
+### 11.4 Setup & Uninstall Contract
+
+The `setup.sh` script is the primary installation and uninstallation interface. It handles venv creation, package installation, MCP registration, and agent adapter generation.
+
+**Non-interactive mode:**
+- `--yes` / `-y` flag auto-confirms all prompts
+- When stdin is not a TTY (piped, CI, subshell), auto-defaults to yes mode
+- This ensures `setup.sh` works in non-interactive environments (CI pipelines, `claude -p` subshells)
+
+**`.momento_created` marker:**
+- `setup.sh` creates `.venv/.momento_created` when it creates a new venv
+- On uninstall, `.venv` is only removed if this marker exists
+- Prevents accidental deletion of pre-existing virtual environments
+
+**Uninstall behavior (`setup.sh --uninstall`):**
+
+| Component | Removed by default | Notes |
+|---|---|---|
+| MCP server config | Yes | Removed from `~/.claude/settings.json` |
+| CLAUDE.md adapter | Yes | `## Momento Context Recovery` section stripped |
+| `.codex_instructions.md` | Yes | Deleted if present |
+| pip package | Yes | `pip uninstall -y momento` |
+| `.venv` directory | Only with marker | Requires `.momento_created` marker |
+| `~/.momento` data dir | No | Requires explicit confirmation; `--yes` mode skips (defaults to NO) |
+
+**Data directory protection:** The knowledge database (`~/.momento`) is never removed in `--yes` mode. This is intentional — data destruction should require explicit human confirmation, even in non-interactive contexts. Users who want to remove data must do so manually: `rm -rf ~/.momento`.
+
+**Python utility functions:** Setup and teardown logic is implemented in `src/momento/setup_utils.py` as testable Python functions. `setup.sh` invokes these via `python3 -m momento.setup_utils <command> <path>`. This keeps the shell script thin and the logic testable.
+
 ---
 
 ## 12. CLI

@@ -3,10 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Momento — setup & install script
 # Usage:
-#   ./setup.sh          # Interactive install (creates venv, installs package + dev deps)
-#   ./setup.sh --user   # Install to user site-packages (no venv)
-#   ./setup.sh --global # Install to current interpreter environment (no venv)
-#   ./setup.sh --check  # Verify existing installation
+#   ./setup.sh              # Interactive install (creates venv, installs package + dev deps)
+#   ./setup.sh --user       # Install to user site-packages (no venv)
+#   ./setup.sh --global     # Install to current interpreter environment (no venv)
+#   ./setup.sh --check      # Verify existing installation
+#   ./setup.sh --uninstall  # Interactive uninstall
+#   ./setup.sh --yes        # Non-interactive (auto-confirm all prompts)
+#   ./setup.sh -y           # Short form of --yes
 set -euo pipefail
 
 MOMENTO_DIR="$HOME/.momento"
@@ -14,6 +17,10 @@ DB_PATH="$MOMENTO_DIR/knowledge.db"
 MIN_PYTHON_MAJOR=3
 MIN_PYTHON_MINOR=11
 VENV_DIR=".venv"
+YES_MODE=false
+
+# Auto-default to yes when no TTY (piped, CI, subshell)
+if [[ ! -t 0 ]]; then YES_MODE=true; fi
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -26,6 +33,17 @@ info()  { echo -e "${CYAN}[info]${NC}  $*"; }
 ok()    { echo -e "${GREEN}[ok]${NC}    $*"; }
 warn()  { echo -e "${YELLOW}[warn]${NC}  $*"; }
 fail()  { echo -e "${RED}[fail]${NC}  $*"; exit 1; }
+
+# --- Confirm helper (respects --yes and TTY detection) ---
+confirm() {
+    local prompt="$1"
+    if [[ "$YES_MODE" == "true" ]]; then
+        info "$prompt [auto-yes]"
+        return 0
+    fi
+    read -rp "$prompt " ans
+    [[ "${ans:-Y}" =~ ^[Yy]$ ]]
+}
 
 # --- Python version check ---
 check_python() {
@@ -70,6 +88,8 @@ setup_venv() {
         "$PYTHON" -m venv "$VENV_DIR"
         ok "Virtual environment created"
     fi
+    # Mark that momento created this venv
+    touch "$VENV_DIR/.momento_created"
     # shellcheck disable=SC1091
     source "$VENV_DIR/bin/activate"
     PYTHON="python3"
@@ -142,141 +162,32 @@ conn.close()
     fi
 }
 
-# --- MCP & Agent Integration (interactive) ---
+# --- MCP & Agent Integration ---
 register_mcp_server() {
     local settings_file="$HOME/.claude/settings.json"
-    mkdir -p "$(dirname "$settings_file")"
+    local py="${1:-$PYTHON}"
 
-    "$PYTHON" -c "
-import json, os
-path = '$settings_file'
-data = {}
-if os.path.exists(path):
-    with open(path) as f:
-        data = json.load(f)
-if 'mcpServers' not in data:
-    data['mcpServers'] = {}
-data['mcpServers']['momento'] = {
-    'command': 'python3',
-    'args': ['-m', 'momento.mcp_server'],
-    'env': {'PYTHONUNBUFFERED': '1'}
-}
-with open(path, 'w') as f:
-    json.dump(data, f, indent=2)
-print('done')
-" && ok "Registered MCP server in $settings_file" \
-  || warn "Could not update $settings_file"
+    "$py" -m momento.setup_utils register_mcp "$settings_file" \
+        && ok "Registered MCP server in $settings_file" \
+        || warn "Could not update $settings_file"
 }
 
 add_claude_adapter() {
     local claude_md="$HOME/.claude/CLAUDE.md"
-    mkdir -p "$(dirname "$claude_md")"
+    local py="${1:-$PYTHON}"
 
-    if [[ -f "$claude_md" ]] && grep -q "Momento Context Recovery" "$claude_md"; then
-        ok "Momento adapter already present in $claude_md"
-        return 0
-    fi
-
-    cat >> "$claude_md" << 'ADAPTER'
-
-## Momento Context Recovery
-
-After any significant file change, decision, or completed subtask:
-  Call log_knowledge(type="session_state", tags=[<relevant domains>])
-  with what was done, what was decided, and what's next.
-  Keep it brief. Context can compact without warning.
-
-At session start or after /clear:
-  Call retrieve_context(include_session_state=true).
-  Use the returned context to orient yourself before taking action.
-
-When the user says "checkpoint" or "save progress":
-  Call log_knowledge(type="session_state", tags=[<relevant domains>])
-  with current task progress, decisions made, and remaining work.
-
-Before /compact (when user explicitly runs it):
-  Call log_knowledge(type="session_state", tags=["checkpoint"])
-  with comprehensive progress summary before executing.
-
-When encountering an unfamiliar error:
-  Call retrieve_context(query="<error description>").
-
-Before implementing a recurring pattern (auth, networking, persistence, caching):
-  Call retrieve_context(query="<pattern name>").
-
-After finalizing a significant decision or plan:
-  Call log_knowledge(type="decision" or "plan", tags=[<domains>])
-  with the decision, rationale, rejected alternatives, and implications.
-  Use the Historical Slice structure.
-ADAPTER
-    ok "Appended Momento adapter to $claude_md"
+    "$py" -m momento.setup_utils add_claude_adapter "$claude_md" \
+        && ok "Momento adapter present in $claude_md" \
+        || warn "Could not update $claude_md"
 }
 
 generate_codex_adapter() {
     local codex_file="./.codex_instructions.md"
+    local py="${1:-$PYTHON}"
 
-    cat > "$codex_file" << 'CODEX'
-## Momento Checkpointing and Context Recovery
-
-You are paired with a local memory layer called Momento that stores
-durable checkpoints, decisions, plans, and known gotchas for the
-current project.
-
-### Checkpoint Conditions
-
-After you complete any of the following during a session:
-  - A significant file change (multi-file patch or cross-layer update)
-  - A resolved error with a concrete fix
-  - A finalized plan or architectural decision
-  - A completed subtask that meaningfully advances the main work
-  - A step that would be costly to re-explain if lost
-
-Call the MCP tool:
-  log_knowledge(
-    type="session_state",
-    content=<concise summary of progress, decisions, remaining tasks>,
-    tags=[<relevant domains>]
-  )
-
-### Save Before Risky Operations
-
-Before any operation that might reduce internal context (large patch
-application, file renames, or before leaving the session):
-  log_knowledge(type="session_state", ...)
-
-### Retrieval Triggers
-
-At session start or after any context loss (restart, resume, new chat):
-  Call retrieve_context(include_session_state=true).
-  Use the returned structured directives to orient yourself before
-  generating further code.
-
-When encountering an unfamiliar error:
-  Call retrieve_context(query="<error description>").
-
-### Decision and Plan Logging
-
-When you finalize a significant design decision or long-term plan:
-  log_knowledge(
-    type="decision" or "plan",
-    content=<Historical Slice structure>,
-    tags=[<relevant domains>]
-  )
-
-Historical Slice structure:
-  Decision: <What was chosen>
-  Rationale: <Why, tradeoffs, constraints>
-  Rejected: <Alternatives and why not>
-  Implications: <Consequences>
-
-### Behavior Expectations
-
-- Checkpoint on meaningful advancement only — not trivial edits
-- Do not checkpoint during speculative brainstorming
-- Do not rely on internal percentages or guesses about context usage
-- Only checkpoint when a logical subtask completes or before known risk
-CODEX
-    ok "Generated $codex_file"
+    "$py" -m momento.setup_utils generate_codex_adapter "$codex_file" \
+        && ok "Generated $codex_file" \
+        || warn "Could not generate $codex_file"
 }
 
 setup_mcp_integration() {
@@ -287,20 +198,17 @@ setup_mcp_integration() {
     echo ""
 
     # --- Register MCP server in Claude Code ---
-    read -rp "Register Momento as an MCP server in Claude Code? [Y/n] " ans
-    if [[ "${ans:-Y}" =~ ^[Yy]$ ]]; then
+    if confirm "Register Momento as an MCP server in Claude Code? [Y/n]"; then
         register_mcp_server
     fi
 
     # --- Add adapter instructions to CLAUDE.md ---
-    read -rp "Add Momento instructions to your global CLAUDE.md? [Y/n] " ans
-    if [[ "${ans:-Y}" =~ ^[Yy]$ ]]; then
+    if confirm "Add Momento instructions to your global CLAUDE.md? [Y/n]"; then
         add_claude_adapter
     fi
 
     # --- Generate .codex_instructions.md ---
-    read -rp "Generate .codex_instructions.md in this project? [Y/n] " ans
-    if [[ "${ans:-Y}" =~ ^[Yy]$ ]]; then
+    if confirm "Generate .codex_instructions.md in this project? [Y/n]"; then
         generate_codex_adapter
     fi
 }
@@ -325,6 +233,101 @@ check_only() {
     ok "Momento is installed and working."
 }
 
+# --- Uninstall ---
+do_uninstall() {
+    echo ""
+    info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    info "  Momento — Uninstall"
+    info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # Find a working python — prefer venv, fall back to system
+    local py=""
+    if [[ -f "$VENV_DIR/bin/python3" ]]; then
+        py="$VENV_DIR/bin/python3"
+    else
+        for candidate in python3 python; do
+            if command -v "$candidate" &>/dev/null; then
+                py="$candidate"
+                break
+            fi
+        done
+    fi
+
+    if [[ -z "$py" ]]; then
+        warn "Python not found — skipping Python-based cleanup"
+    else
+        # Remove MCP server registration
+        local settings_file="$HOME/.claude/settings.json"
+        if [[ -f "$settings_file" ]]; then
+            if confirm "Remove Momento MCP server from $settings_file? [Y/n]"; then
+                "$py" -m momento.setup_utils unregister_mcp "$settings_file" 2>/dev/null \
+                    && ok "Removed MCP server from $settings_file" \
+                    || warn "Could not update $settings_file"
+            fi
+        fi
+
+        # Remove CLAUDE.md adapter
+        local claude_md="$HOME/.claude/CLAUDE.md"
+        if [[ -f "$claude_md" ]] && grep -q "Momento Context Recovery" "$claude_md" 2>/dev/null; then
+            if confirm "Remove Momento adapter from $claude_md? [Y/n]"; then
+                "$py" -m momento.setup_utils remove_claude_adapter "$claude_md" 2>/dev/null \
+                    && ok "Removed Momento adapter from $claude_md" \
+                    || warn "Could not update $claude_md"
+            fi
+        fi
+
+        # Remove .codex_instructions.md
+        if [[ -f "./.codex_instructions.md" ]]; then
+            if confirm "Remove .codex_instructions.md? [Y/n]"; then
+                "$py" -m momento.setup_utils remove_codex_adapter "./.codex_instructions.md" 2>/dev/null \
+                    && ok "Removed .codex_instructions.md" \
+                    || warn "Could not remove .codex_instructions.md"
+            fi
+        fi
+
+        # Uninstall pip package
+        if confirm "Uninstall momento pip package? [Y/n]"; then
+            "$py" -m pip uninstall -y momento --quiet 2>/dev/null \
+                && ok "Uninstalled momento pip package" \
+                || warn "Could not uninstall momento (may not be installed)"
+        fi
+    fi
+
+    # Remove venv only if .momento_created marker exists
+    if [[ -d "$VENV_DIR" ]]; then
+        if [[ -f "$VENV_DIR/.momento_created" ]]; then
+            if confirm "Remove virtual environment at $VENV_DIR? [Y/n]"; then
+                rm -rf "$VENV_DIR"
+                ok "Removed $VENV_DIR"
+            fi
+        else
+            info "Skipping $VENV_DIR — not created by Momento (no .momento_created marker)"
+        fi
+    fi
+
+    # Data directory — defaults to NO, requires explicit yes
+    if [[ -d "$MOMENTO_DIR" ]]; then
+        echo ""
+        warn "Data directory: $MOMENTO_DIR"
+        warn "This contains your knowledge database. Removal is permanent."
+        if [[ "$YES_MODE" == "true" ]]; then
+            info "Remove $MOMENTO_DIR? [auto-NO — use explicit confirmation to remove data]"
+        else
+            read -rp "Remove $MOMENTO_DIR? [y/N] " ans
+            if [[ "${ans:-N}" =~ ^[Yy]$ ]]; then
+                rm -rf "$MOMENTO_DIR"
+                ok "Removed $MOMENTO_DIR"
+            else
+                info "Kept $MOMENTO_DIR"
+            fi
+        fi
+    fi
+
+    echo ""
+    ok "Uninstall complete."
+}
+
 # --- Main ---
 main() {
     echo ""
@@ -333,15 +336,44 @@ main() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
-    local mode="${1:-}"
+    # Parse arguments
+    local mode=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --yes|-y)
+                YES_MODE=true
+                shift
+                ;;
+            --check)
+                mode="check"
+                shift
+                ;;
+            --uninstall)
+                mode="uninstall"
+                shift
+                ;;
+            --global)
+                mode="global"
+                shift
+                ;;
+            --user)
+                mode="user"
+                shift
+                ;;
+            *)
+                fail "Unknown option: $1 (expected: --global, --user, --check, --uninstall, --yes)"
+                ;;
+        esac
+    done
 
-    if [[ "$mode" == "--check" ]]; then
+    if [[ "$mode" == "check" ]]; then
         check_only
         return 0
     fi
 
-    if [[ -n "$mode" ]] && [[ "$mode" != "--global" ]] && [[ "$mode" != "--user" ]]; then
-        fail "Unknown option: $mode (expected: --global, --user, --check)"
+    if [[ "$mode" == "uninstall" ]]; then
+        do_uninstall
+        return 0
     fi
 
     # Step 1: Python
@@ -351,9 +383,9 @@ main() {
     ensure_data_dir
 
     # Step 3: Install
-    if [[ "$mode" == "--global" ]]; then
+    if [[ "$mode" == "global" ]]; then
         install_global
-    elif [[ "$mode" == "--user" ]]; then
+    elif [[ "$mode" == "user" ]]; then
         install_user
     else
         setup_venv

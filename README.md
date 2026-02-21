@@ -41,19 +41,13 @@ pip install -e ".[dev]"
 ### Uninstall
 
 ```bash
-# If installed in a virtual environment
-pip uninstall -y momento
-deactivate 2>/dev/null || true
-rm -rf .venv
-
-# If installed with --user
-python3 -m pip uninstall -y momento
-
-# If installed with --global (current interpreter env)
-python3 -m pip uninstall -y momento
+./setup.sh --uninstall        # Interactive: confirms each step
+./setup.sh --uninstall --yes  # Non-interactive: removes everything except data
 ```
 
-Optional data cleanup:
+Removes: pip package, MCP config, CLAUDE.md adapter, .codex\_instructions.md, .venv (if created by momento).
+
+To also remove your knowledge database:
 
 ```bash
 rm -rf ~/.momento

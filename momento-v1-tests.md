@@ -840,6 +840,67 @@ This is the acceptance test. If this works, ship.
 
 ---
 
+### T14: Setup & Uninstall
+
+**T14.1 — MCP server registration creates valid settings.json** `should_pass`
+```
+Given: no settings.json exists
+When: register_mcp_server(settings_path)
+Then: settings.json created with valid JSON
+      mcpServers.momento has correct command, args, env
+```
+
+**T14.2 — MCP server unregistration preserves other servers** `should_pass`
+```
+Given: settings.json with momento + other_tool MCP servers
+When: unregister_mcp_server(settings_path)
+Then: momento removed, other_tool preserved
+      mcpServers key still present (not empty-cleaned)
+```
+
+**T14.3 — Claude adapter idempotent add/remove** `should_pass`
+```
+Given: CLAUDE.md with existing content
+When: add_claude_adapter() called twice, then remove_claude_adapter()
+Then: adapter appears once after adds, fully removed after remove
+      surrounding content preserved intact
+```
+
+**T14.4 — Uninstall cleans up all integration files** `should_pass`
+```
+Given: settings.json with momento, CLAUDE.md with adapter, .codex_instructions.md
+When: setup.sh --uninstall --yes
+Then: momento removed from settings.json
+      adapter removed from CLAUDE.md
+      .codex_instructions.md deleted
+```
+
+**T14.5 — Venv only removed with marker** `should_pass`
+```
+Given: .venv directory exists
+When: setup.sh --uninstall --yes
+Then: .venv removed only if .momento_created marker exists
+      .venv preserved if marker absent
+```
+
+**T14.6 — --yes flag skips interactive prompts** `should_pass`
+```
+Given: setup.sh invoked with --yes flag
+When: any confirmation prompt is reached
+Then: auto-confirms without waiting for input
+      does not hang or block
+```
+
+**T14.7 — Non-TTY defaults to yes** `should_pass`
+```
+Given: setup.sh invoked with stdin not connected to TTY (piped)
+When: any confirmation prompt is reached
+Then: auto-confirms without waiting for input
+      same behavior as --yes flag
+```
+
+---
+
 ## Test Priority
 
 If time is tight, ship with these passing (in order):
@@ -876,6 +937,11 @@ SHOULD PASS (ship without, fix fast):
   T7.3   momento save
   T8.2   Simultaneous writes
   T11.1  Cross-project dedup (NULL handling)
+  T14.1  MCP server registration
+  T14.4  Uninstall cleans up integration files
+  T14.5  Venv marker protection
+  T14.6  --yes flag skips prompts
+  T14.7  Non-TTY defaults to yes
 
 NICE TO HAVE (v0.1.1):
   T1.7   Branch rename degradation
@@ -889,6 +955,8 @@ NICE TO HAVE (v0.1.1):
   T9.2   CLI bypass
   T10.1  Ingestion partial failure
   T12.1  Cross-project tag matching
+  T14.2  Unregistration preserves other servers
+  T14.3  Claude adapter idempotent add/remove
 ```
 
 ---
@@ -914,8 +982,8 @@ Final review:
 7. Search mode pure FTS5 relevance (no restore ranking bleed)
 8. knowledge_stats separate table (retrieval_count + COALESCE dedup)
 
-**Total tests: 75 across 13 subsystems**
+**Total tests: 82 across 14 subsystems**
 - 15 must-pass (blocks ship)
-- 13 should-pass (fix within days)
-- 11 nice-to-have (v0.1.1)
+- 18 should-pass (fix within days)
+- 13 nice-to-have (v0.1.1)
 - 36 remaining (full coverage)
