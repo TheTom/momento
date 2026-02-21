@@ -184,6 +184,9 @@ def _content_hash(content: str) -> str:
 # Entry factory
 # ---------------------------------------------------------------------------
 
+_UNSET = object()
+
+
 def make_entry(
     content: str,
     type: str = "decision",
@@ -193,13 +196,14 @@ def make_entry(
     source_type: str = "manual",
     confidence: float = 0.9,
     created_at: str | None = None,
-    project_id: str | None = None,
-    project_name: str | None = None,
+    project_id: str | None = _UNSET,
+    project_name: str | None = _UNSET,
 ) -> dict:
     """Create a single valid entry dict.
 
     All fields match the knowledge table schema. Tags are normalized.
     Timestamps default to UTC now. Project defaults to mock project.
+    Pass project_id=None explicitly for cross-project (global) entries.
     """
     if tags is None:
         tags = []
@@ -209,14 +213,18 @@ def make_entry(
     normalized_tags = _normalize_tags(tags)
     now = created_at or utc_now()
 
+    # Resolve project defaults — _UNSET means "use mock defaults"
+    resolved_project_id = MOCK_PROJECT_ID if project_id is _UNSET else project_id
+    resolved_project_name = MOCK_PROJECT_NAME if project_name is _UNSET else project_name
+
     return {
         "id": str(uuid.uuid4()),
         "content": content,
         "content_hash": _content_hash(content),
         "type": type,
         "tags": _tags_to_json(normalized_tags),
-        "project_id": project_id if project_id is not None else MOCK_PROJECT_ID,
-        "project_name": project_name or MOCK_PROJECT_NAME,
+        "project_id": resolved_project_id,
+        "project_name": resolved_project_name,
         "branch": branch,
         "source_type": source_type,
         "confidence": confidence,

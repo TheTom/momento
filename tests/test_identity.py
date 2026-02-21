@@ -156,7 +156,7 @@ def test_identity_branch_rename_demotes_but_preserves_entry(db, mock_git_repo):
     db.commit()
 
     # Import retrieve_context — this will fail since it doesn't exist yet
-    from momento.db import retrieve_context  # noqa: F401 — RED test
+    from momento.retrieve import retrieve_context  # noqa: F401 — RED test
 
     # Simulate being on branch "feature/y" now
     result = retrieve_context(
@@ -210,7 +210,7 @@ def test_identity_branch_comparison_is_case_sensitive(db, mock_git_repo):
     insert_entry(db, entry)
     db.commit()
 
-    from momento.db import retrieve_context  # noqa: F401 — RED test
+    from momento.retrieve import retrieve_context  # noqa: F401 — RED test
 
     # Query as if on branch "feature/auth" (lowercase a)
     result = retrieve_context(

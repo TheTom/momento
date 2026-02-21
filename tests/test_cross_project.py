@@ -23,6 +23,7 @@ from tests.conftest import insert_entries
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.nice_to_have
 def test_tag_intersection_surfaces_cross_project(db):
     """T12.1: Project A entry tagged ['auth', 'server'].
     Project B entry tagged ['auth'].

@@ -16,7 +16,6 @@ from momento.surface import detect_surface
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.must_pass
 def test_basic_surface_matching():
     """T6.1: /code/app/server/handlers -> 'server'"""
     assert detect_surface("/code/app/server/handlers") == "server"

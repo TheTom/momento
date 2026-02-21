@@ -35,10 +35,13 @@ def db(db_path):
     """Initialized DB connection with full schema.
 
     Calls ensure_db() to create the database with all tables,
-    indexes, triggers, and momento_meta.
+    indexes, triggers, and momento_meta. Connection is closed
+    after the test completes.
     """
     from momento.db import ensure_db
-    return ensure_db(db_path)
+    conn = ensure_db(db_path)
+    yield conn
+    conn.close()
 
 
 @pytest.fixture

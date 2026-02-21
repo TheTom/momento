@@ -197,6 +197,7 @@ def test_search_respects_token_cap(db):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.should_pass
 def test_search_mode_no_restore_ranking(db):
     """T5.5: search results are ranked by FTS5 relevance only.
     No surface preference, no branch preference, no tier ordering.

@@ -10,13 +10,14 @@ def retrieve_context(
     surface: str | None = None,
     query: str | None = None,
     include_session_state: bool = True,
-) -> str:
+) -> "RestoreResult":
     """Retrieve relevant knowledge for the current project.
 
     Two modes:
     - Restore mode (query is None/empty): deterministic 5-tier state reconstruction
     - Search mode (query provided): FTS5 keyword search ranked by relevance
 
-    Returns rendered markdown string within 2000-token budget.
+    Returns RestoreResult with .entries, .rendered, .total_tokens.
     """
+    from momento.models import RestoreResult  # noqa: F811
     raise NotImplementedError("retrieve.retrieve_context")

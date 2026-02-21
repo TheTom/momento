@@ -21,6 +21,7 @@ from tests.mock_data import (
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.should_pass
 def test_cross_project_null_dedup(db):
     """T11.1: two cross-project entries (project_id=NULL) with identical
     content. Second log_knowledge() is silently skipped.
