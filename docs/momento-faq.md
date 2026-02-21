@@ -226,6 +226,19 @@ This is for you.
 
 ---
 
+## How do I install it?
+
+```bash
+pipx install momento
+momento status
+```
+
+Momento installs via pipx. No external dependencies beyond Python 3.11+.
+
+For detailed setup including MCP server registration, see the [README](../README.md).
+
+---
+
 ## What is the core idea in one sentence?
 
 When your AI forgets, Momento remembers.

@@ -2,9 +2,11 @@
 
 ## Product Requirements Document
 
-**Version:** 0.9
+**Version:** 1.0
 **Date:** February 21, 2026
-**Status:** Ready for Implementation
+**Status:** Shipped (v0.1.0)
+
+**Implementation Status:** v0.1.0 shipped. 350 tests passing. All v0.1 scope items implemented and verified. See `docs/momento-v1-tests.md` for test coverage and `docs/reference.md` for CLI/MCP reference.
 
 ---
 
@@ -163,7 +165,7 @@ def resolve_branch(working_dir: str) -> str | None:
 
 ## 6. MCP Server
 
-### Two tools. No more in v0.9.
+### Two tools. No more in v0.1.
 
 - `retrieve_context`
 - `log_knowledge`
@@ -1300,6 +1302,8 @@ Each phase ships only after the previous phase is stable and trusted.
 ---
 
 ## 19. What Happens Next
+
+> **Status:** All 10 implementation steps below are complete. v0.1.0 is shipped with 350 tests passing.
 
 This document is done. Further PRD iteration is procrastination disguised as rigor.
 

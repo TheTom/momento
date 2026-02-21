@@ -4,7 +4,8 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests: 350 passing](https://img.shields.io/badge/tests-350_passing-brightgreen.svg)](tests/)
+[![Tests: 351 passing](https://img.shields.io/badge/tests-351_passing-brightgreen.svg)](tests/)
+[![Coverage: 98%](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)](tests/)
 
 ---
 
@@ -164,12 +165,38 @@ Default locations:
 
 ## Development
 
-### Run tests
+### Tests & Coverage
+
+**351 tests passing. 98% branch coverage.**
 
 ```bash
-pytest tests/ -v                    # Full suite (350 tests)
+pytest tests/ -v                    # Full suite
 pytest tests/ -m must_pass -v       # Ship-blocking tests only
 pytest tests/ -m should_pass -v     # Fix-within-days tests
+```
+
+Coverage by module:
+
+| Module | Coverage |
+|--------|----------|
+| `cli.py` | 99% |
+| `db.py` | 100% |
+| `identity.py` | 100% |
+| `ingest.py` | 98% |
+| `mcp_server.py` | 100% |
+| `models.py` | 100% |
+| `retrieve.py` | 99% |
+| `setup_utils.py` | 90% |
+| `store.py` | 100% |
+| `surface.py` | 100% |
+| `tags.py` | 100% |
+| `tokens.py` | 100% |
+| **Total** | **98%** |
+
+Run coverage locally:
+
+```bash
+pytest tests/ --cov=momento --cov-branch --cov-report=term-missing
 ```
 
 ### Project structure

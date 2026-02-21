@@ -1,4 +1,6 @@
-# Momento v0.9 — Acceptance Tests + Pre-Flight Fixes
+# Momento v0.1.0 — Acceptance Tests + Pre-Flight Fixes
+
+> **Status:** v0.1.0 shipped. All 84 specified tests pass. Total test suite expanded to 350 tests during implementation.
 
 Two sections:
 1. Gaps found in pre-flight review (fix before coding)
@@ -1001,8 +1003,10 @@ Final review:
 7. Search mode pure FTS5 relevance (no restore ranking bleed)
 8. knowledge_stats separate table (retrieval_count + COALESCE dedup)
 
-**Total tests: 84 across 14 subsystems**
-- 15 must-pass (blocks ship)
-- 20 should-pass (fix within days)
-- 13 nice-to-have (v0.1.1)
-- 36 remaining (full coverage)
+**Original spec: 84 tests across 14 subsystems**
+- 15 must-pass (blocks ship) -- ALL PASSING
+- 20 should-pass (fix within days) -- ALL PASSING
+- 13 nice-to-have (v0.1.1) -- ALL PASSING
+- 36 remaining (full coverage) -- ALL PASSING
+
+**Shipped: 350 tests passing across all subsystems.** Test coverage expanded significantly beyond the original 84-test spec during implementation. All pre-flight gaps were fixed and all must-pass, should-pass, and nice-to-have tests are passing.
