@@ -198,7 +198,7 @@ Momento exposes two MCP tools for AI coding agents. The server is stateless — 
 
 Register Momento as an MCP server (handled automatically by `./setup.sh`):
 
-**Claude Code** (`~/.claude/settings.json`):
+**Claude Code** (`~/.claude.json`):
 ```json
 {
   "mcpServers": {

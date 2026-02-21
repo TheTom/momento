@@ -142,7 +142,7 @@ verify() {
 
 # --- MCP & Agent Integration ---
 register_mcp_server() {
-    local settings_file="$HOME/.claude/settings.json"
+    local settings_file="$HOME/.claude.json"
     local py="${PIPX_PYTHON:-$PYTHON}"
 
     "$py" -m momento.setup_utils register_mcp "$settings_file" \
@@ -238,7 +238,7 @@ do_uninstall() {
         warn "Python not found — skipping Python-based cleanup"
     else
         # Remove MCP server registration
-        local settings_file="$HOME/.claude/settings.json"
+        local settings_file="$HOME/.claude.json"
         if [[ -f "$settings_file" ]]; then
             if confirm "Remove Momento MCP server from $settings_file? [Y/n]"; then
                 "$py" -m momento.setup_utils unregister_mcp "$settings_file" 2>/dev/null \

@@ -131,7 +131,7 @@ class TestSetupShFlags:
         """--uninstall --yes removes MCP config, CLAUDE.md adapter, and codex file."""
         tmp_home, tmp_project = _make_sandbox(tmp_path)
 
-        # Create ~/.claude/settings.json with momento MCP server
+        # Create ~/.claude.json with momento MCP server
         claude_dir = tmp_home / ".claude"
         claude_dir.mkdir()
 
@@ -145,7 +145,7 @@ class TestSetupShFlags:
                 "other_server": {"command": "node", "args": ["server.js"]},
             }
         }
-        settings_file = claude_dir / "settings.json"
+        settings_file = tmp_home / ".claude.json"
         settings_file.write_text(json.dumps(settings_data, indent=2))
 
         # Create ~/.claude/CLAUDE.md with Momento adapter section
@@ -182,7 +182,7 @@ class TestSetupShFlags:
 
         result = _run_setup(["--uninstall", "--yes"], tmp_home, tmp_project)
 
-        # Verify settings.json no longer has the momento key
+        # Verify .claude.json no longer has the momento key
         updated_settings = json.loads(settings_file.read_text())
         assert "momento" not in updated_settings.get("mcpServers", {})
         assert "other_server" in updated_settings.get("mcpServers", {})

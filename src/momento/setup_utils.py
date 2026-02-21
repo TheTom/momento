@@ -7,8 +7,8 @@ Extracted from inline heredocs in setup.sh into testable Python functions.
 Used by setup.sh for --install and --uninstall operations.
 
 Usage from shell:
-    python3 -m momento.setup_utils register_mcp <settings_path>
-    python3 -m momento.setup_utils unregister_mcp <settings_path>
+    python3 -m momento.setup_utils register_mcp <claude_json_path>
+    python3 -m momento.setup_utils unregister_mcp <claude_json_path>
     python3 -m momento.setup_utils add_claude_adapter <claude_md_path>
     python3 -m momento.setup_utils remove_claude_adapter <claude_md_path>
     python3 -m momento.setup_utils generate_codex_adapter <codex_path>
@@ -24,15 +24,20 @@ import sys
 # MCP Server Registration
 # ---------------------------------------------------------------------------
 
-_MCP_SERVER_CONFIG = {
-    "command": "momento-mcp",
-    "args": [],
-    "env": {"PYTHONUNBUFFERED": "1"},
-}
+def _mcp_server_config():
+    """Return MCP config using the absolute path to momento-mcp."""
+    import shutil
+
+    cmd = shutil.which("momento-mcp") or "momento-mcp"
+    return {
+        "command": cmd,
+        "args": [],
+        "env": {"PYTHONUNBUFFERED": "1"},
+    }
 
 
 def register_mcp_server(settings_path: str) -> bool:
-    """Add momento to mcpServers in Claude Code settings.json.
+    """Add momento to mcpServers in ~/.claude.json.
 
     Creates the file and parent dirs if they don't exist.
     Idempotent — re-registering overwrites with latest config.
@@ -48,7 +53,7 @@ def register_mcp_server(settings_path: str) -> bool:
         if "mcpServers" not in data:
             data["mcpServers"] = {}
 
-        data["mcpServers"]["momento"] = _MCP_SERVER_CONFIG
+        data["mcpServers"]["momento"] = _mcp_server_config()
 
         os.makedirs(os.path.dirname(settings_path), exist_ok=True)
         with open(settings_path, "w") as f:
@@ -61,7 +66,7 @@ def register_mcp_server(settings_path: str) -> bool:
 
 
 def unregister_mcp_server(settings_path: str) -> bool:
-    """Remove momento from mcpServers in Claude Code settings.json.
+    """Remove momento from mcpServers in ~/.claude.json.
 
     Cleans up empty mcpServers key if no other servers remain.
     Noop if file doesn't exist or momento not registered.
