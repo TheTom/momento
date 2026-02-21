@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Momento — Beyond Code</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#060609;--surface:#0b0b12;--s2:#111119;--s3:#191923;
+  --border:#262638;--bhi:#363650;
+  --text:#dcdce8;--dim:#8a8aa4;--muted:#50506a;
+  --green:#5ce0aa;--gdim:rgba(92,224,170,.07);--gborder:rgba(92,224,170,.22);
+  --red:#ef6461;--rdim:rgba(239,100,97,.07);--rborder:rgba(239,100,97,.22);
+  --orange:#f0b429;--odim:rgba(240,180,41,.07);--oborder:rgba(240,180,41,.22);
+  --blue:#5b9cf5;--bdim:rgba(91,156,245,.06);
+  --purple:#9b7afa;--pdim:rgba(155,122,250,.05);--pborder:rgba(155,122,250,.16);
+  --warm:#e8c4a0;--wdim:rgba(232,196,160,.06);--wborder:rgba(232,196,160,.18);
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased}
+
+section{max-width:720px;margin:0 auto;padding:0 32px}
+.wide-section{max-width:960px;margin:0 auto;padding:0 32px}
+
+.hero{padding:80px 32px 60px;max-width:720px;margin:0 auto;text-align:center}
+.hero-badge{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:16px}
+.hero h1{font-family:'Instrument Serif',serif;font-size:clamp(34px,5vw,50px);font-weight:400;color:var(--text);line-height:1.15;margin-bottom:20px}
+.hero h1 em{color:var(--warm);font-style:italic}
+.hero p{font-size:17px;color:var(--dim);line-height:1.7;max-width:540px;margin:0 auto}
+
+.divider{height:1px;background:var(--border);margin:56px auto;max-width:720px}
+.divider.short{max-width:120px;margin:48px auto}
+
+.ts{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px;letter-spacing:.5px}
+
+.narr{font-size:17px;color:var(--dim);line-height:1.75;margin-bottom:24px}
+.narr strong{color:var(--text);font-weight:500}
+.narr em{color:var(--muted)}
+.narr .g{color:var(--green)}
+
+.stitle{font-family:'Instrument Serif',serif;font-size:28px;font-weight:400;color:var(--text);margin-bottom:20px;line-height:1.3}
+.stitle.green{color:var(--green)}
+.stitle.warm{color:var(--warm)}
+
+/* ---- Work cards ---- */
+.workcard{border:1px solid var(--border);background:var(--s2);border-radius:10px;padding:20px 24px;margin:20px 0}
+.workcard-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.workcard-icon{font-size:20px}
+.workcard-title{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text)}
+.workcard-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-left:auto}
+.workcard-body{font-size:14px;color:var(--dim);line-height:1.6}
+.workcard-list{list-style:none;padding:0;margin:8px 0 0}
+.workcard-list li{padding:4px 0 4px 20px;position:relative;font-size:14px;color:var(--dim);line-height:1.5}
+.workcard-list li::before{content:'·';position:absolute;left:6px;color:var(--muted);font-weight:700}
+
+/* ---- Saved entry ---- */
+.saved{border:1px solid var(--pborder);background:var(--pdim);border-radius:8px;padding:16px 20px;margin:20px 0}
+.saved-head{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--purple);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.saved-head::before{content:'⚡'}
+.saved-type{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px;margin-left:auto}
+.saved-type.ss{background:var(--odim);color:var(--orange);border:1px solid var(--orange)}
+.saved-type.dec{background:var(--bdim);color:var(--blue);border:1px solid var(--blue)}
+.saved-type.plan{background:var(--wdim);color:var(--warm);border:1px solid var(--warm)}
+.saved-body{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);line-height:1.7}
+.saved-body strong{color:var(--text);font-weight:600}
+
+/* ---- Break moment ---- */
+.break-moment{text-align:center;padding:48px 32px;max-width:720px;margin:0 auto}
+.break-icon{font-size:40px;margin-bottom:14px}
+.break-moment h2{font-family:'Instrument Serif',serif;font-size:28px;color:var(--text);margin-bottom:10px}
+.break-moment p{font-size:16px;color:var(--dim);max-width:420px;margin:0 auto;line-height:1.6}
+
+/* ---- Split ---- */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin:40px 0;border-radius:12px;overflow:hidden}
+@media(max-width:800px){.split{grid-template-columns:1fr;gap:16px;border-radius:0;overflow:visible}
+  .split-pane{border-radius:12px !important}}
+.split-pane{padding:32px 28px}
+.split-pane.without{background:var(--rdim);border:1px solid var(--rborder)}
+.split-pane.with{background:var(--gdim);border:1px solid var(--gborder)}
+.split-label{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px}
+.split-label.bad{color:var(--red)}.split-label.good{color:var(--green)}
+.split-pane h3{font-family:'Instrument Serif',serif;font-size:22px;margin-bottom:14px;line-height:1.3}
+.split-pane.without h3{color:var(--red)}
+.split-pane.with h3{color:var(--green)}
+.split-list{list-style:none;padding:0;margin:0}
+.split-list li{font-size:14px;color:var(--dim);padding:5px 0 5px 20px;position:relative;line-height:1.5}
+.split-list li::before{position:absolute;left:0;font-weight:700}
+.split-pane.without .split-list li::before{content:'✗';color:var(--red)}
+.split-pane.with .split-list li::before{content:'✓';color:var(--green)}
+
+/* ---- Restore ---- */
+.restore{border:1px solid var(--gborder);background:var(--gdim);border-radius:10px;padding:20px 24px;margin:24px 0}
+.restore-head{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--green);margin-bottom:14px}
+.restore-head::before{content:'↩ '}
+.restore-sect{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--text);margin-top:12px;margin-bottom:4px}
+.restore-sect:first-of-type{margin-top:0}
+.restore-line{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);padding-left:14px;line-height:1.7}
+.restore-entry{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--blue);margin-top:8px}
+
+/* ---- Chat ---- */
+.chat{margin:24px 0;display:flex;flex-direction:column;gap:12px}
+.chat-you{align-self:flex-start;background:var(--s3);border:1px solid var(--border);border-radius:14px 14px 14px 4px;padding:12px 18px;max-width:80%;font-size:15px;color:var(--text)}
+.chat-you::before{content:'You';display:block;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+.chat-agent{align-self:flex-end;background:var(--bdim);border:1px solid rgba(91,156,245,.12);border-radius:14px 14px 4px 14px;padding:12px 18px;max-width:85%;font-size:15px;color:var(--text);line-height:1.6}
+.chat-agent::before{content:attr(data-who);display:block;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+
+/* ---- Use cases grid ---- */
+.usecases{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:24px 0}
+@media(max-width:640px){.usecases{grid-template-columns:1fr}}
+.usecase{border:1px solid var(--border);background:var(--s2);border-radius:8px;padding:16px 18px}
+.usecase-icon{font-size:20px;margin-bottom:8px}
+.usecase h4{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px}
+.usecase p{font-size:13px;color:var(--dim);line-height:1.5}
+
+/* ---- Principle card ---- */
+.principle{border-left:3px solid var(--warm);background:var(--wdim);border-radius:0 8px 8px 0;padding:20px 24px;margin:32px 0}
+.principle h4{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--warm);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+.principle p{font-size:15px;color:var(--dim);line-height:1.6}
+.principle p strong{color:var(--text)}
+
+/* ---- Takeaway ---- */
+.takeaway{text-align:center;padding:64px 32px 48px;max-width:720px;margin:0 auto}
+.takeaway h2{font-family:'Instrument Serif',serif;font-size:36px;color:var(--text);margin-bottom:16px;line-height:1.2}
+.takeaway h2 em{color:var(--warm);font-style:italic}
+.takeaway p{font-size:17px;color:var(--dim);line-height:1.7;max-width:500px;margin:0 auto 12px}
+
+.foot{text-align:center;padding:32px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.5px;border-top:1px solid var(--border);margin-top:40px;max-width:720px;margin-left:auto;margin-right:auto}
+
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .6s ease,transform .6s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<div class="hero">
+  <div class="hero-badge">Momento · Beyond Code</div>
+  <h1>AI memory isn't just<br>for developers.<br><em>It's for anyone doing real work.</em></h1>
+  <p>Every AI assistant forgets when a session ends. If your project spans more than one conversation, you're re-explaining yourself every time. Momento fixes that — for any kind of work. It preserves decisions, reasoning, and open questions so your work has continuity.</p>
+</div>
+
+<div class="divider"></div>
+
+<!-- ============ THE PROBLEM ============ -->
+<section class="reveal">
+  <div class="stitle">The problem is universal</div>
+  <p class="narr">You're planning a marketing strategy. Or writing a thesis. Or managing a product launch. You use an AI assistant to help think through it.</p>
+  <p class="narr">Day one is great. You build context together — goals, constraints, decisions, open questions. The assistant <strong>gets it</strong>.</p>
+  <p class="narr">Then the session ends. And tomorrow, <strong>the assistant has amnesia.</strong></p>
+  <p class="narr">You start over. Re-explain the audience. Re-describe the constraints. Re-state the decisions you already made. Hope you remember the nuance. You probably don't. Something falls through the cracks.</p>
+  <p class="narr"><em>This happens every single day, to everyone using AI for work that spans more than one sitting.</em></p>
+</section>
+
+<div class="divider short"></div>
+
+<!-- ============ SIMULATION: MARKETING PLAN ============ -->
+<section class="reveal">
+  <div class="ts">Simulation</div>
+  <div class="stitle warm">Annual Marketing Plan</div>
+  <p class="narr">You're building your company's annual marketing strategy with help from Claude Desktop. This is a multi-day project — too complex for one session, too important to lose context on.</p>
+</section>
+
+<section class="reveal">
+  <div class="ts">Day 1 — Monday morning</div>
+  <p class="narr">You spend two hours with Claude brainstorming and refining. Good session.</p>
+
+  <div class="workcard">
+    <div class="workcard-head">
+      <span class="workcard-icon">🎯</span>
+      <span class="workcard-title">Strategy session</span>
+      <span class="workcard-time">2 hours</span>
+    </div>
+    <ul class="workcard-list">
+      <li>Identified three priority channels: content marketing, paid social, partner co-marketing</li>
+      <li>Defined target audience segments with budget constraints</li>
+      <li>Drafted initial KPIs per channel</li>
+      <li>Decided against influencer marketing — too expensive for current stage</li>
+      <li>Open question: how to measure partner channel attribution</li>
+    </ul>
+  </div>
+
+  <p class="narr">As you work, the assistant checkpoints at natural pauses. These saves happen automatically — you don't manage them.</p>
+
+  <div class="saved">
+    <div class="saved-head">Saved <span class="saved-type ss">session_state</span></div>
+    <div class="saved-body">
+      Three priority channels selected: content, paid social, partner co-marketing. KPIs drafted per channel. <strong>Next: finalize measurement framework. Open: partner attribution method.</strong>
+    </div>
+  </div>
+
+  <div class="saved">
+    <div class="saved-head">Saved <span class="saved-type dec">decision</span></div>
+    <div class="saved-body">
+      <strong>Decision:</strong> No influencer marketing in 2025<br>
+      <strong>Rationale:</strong> CAC too high for current ARR stage<br>
+      <strong>Rejected:</strong> Micro-influencer pilot program<br>
+      <strong>Implications:</strong> Reallocate influencer budget to content
+    </div>
+  </div>
+
+  <div class="saved">
+    <div class="saved-head">Saved <span class="saved-type plan">plan</span></div>
+    <div class="saved-body">
+      <strong>Marketing plan structure:</strong><br>
+      Phase 1: Channel strategy + KPIs (this week)<br>
+      Phase 2: Budget allocation + timeline (next week)<br>
+      Phase 3: Creative briefs + execution plan (week 3)
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ THE BREAK ============ -->
+<div class="break-moment reveal">
+  <div class="break-icon">🌙</div>
+  <h2>Session ends. You go home.</h2>
+  <p>Two hours of accumulated strategy, reasoning, decisions, and open questions. In the assistant's working memory, gone. In Momento, preserved.</p>
+</div>
+
+<div class="divider"></div>
+
+<!-- ============ DAY 2: THE SPLIT ============ -->
+<section class="reveal">
+  <div class="ts">Day 2 — Tuesday morning</div>
+  <div class="stitle">You open a new session</div>
+  <p class="narr">Fresh coffee. New chat window. You want to continue the marketing plan. The assistant has no idea who you are.</p>
+</section>
+
+<div class="wide-section reveal">
+  <div class="split">
+    <div class="split-pane without">
+      <div class="split-label bad">Without Momento</div>
+      <h3>Start from scratch</h3>
+      <ul class="split-list">
+        <li>Re-explain your company and stage</li>
+        <li>Re-describe the three channels</li>
+        <li>Re-state why you rejected influencers</li>
+        <li>Try to remember the KPIs you drafted</li>
+        <li>Forget the partner attribution question</li>
+        <li>Waste 15 minutes rebuilding context</li>
+      </ul>
+    </div>
+    <div class="split-pane with">
+      <div class="split-label good">With Momento</div>
+      <h3>Pick up where you left off</h3>
+      <ul class="split-list">
+        <li>Active task and next step ready</li>
+        <li>Channel strategy retrieved with reasoning</li>
+        <li>Influencer rejection preserved with rationale</li>
+        <li>Open question surfaced: partner attribution</li>
+        <li>Plan structure with phasing intact</li>
+        <li>Oriented in under a second</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="divider short"></div>
+
+<!-- ============ THE RESTORE ============ -->
+<section class="reveal">
+  <div class="stitle green">What the assistant actually sees</div>
+  <p class="narr">You say "What was I working on?" and the assistant retrieves your project context:</p>
+
+  <div class="restore">
+    <div class="restore-head">Momento restore</div>
+    <div class="restore-sect">Active Task</div>
+    <div class="restore-line">Annual marketing plan — channel strategy + KPIs drafted.</div>
+    <div class="restore-line">Next: finalize measurement framework.</div>
+    <div class="restore-line">Open question: partner channel attribution method.</div>
+
+    <div class="restore-entry">Channel Strategy [decision]</div>
+    <div class="restore-line">Three priority channels: content marketing, paid social, partner co-marketing.</div>
+    <div class="restore-line">Influencer marketing rejected — CAC too high for current stage.</div>
+    <div class="restore-line">Budget reallocation: influencer → content.</div>
+
+    <div class="restore-entry">Plan Phases [plan]</div>
+    <div class="restore-line">Phase 1: Channel strategy + KPIs (this week)</div>
+    <div class="restore-line">Phase 2: Budget allocation + timeline (next week)</div>
+    <div class="restore-line">Phase 3: Creative briefs + execution (week 3)</div>
+  </div>
+</section>
+
+<section class="reveal">
+  <div class="chat">
+    <div class="chat-you">Let's continue the marketing plan. I want to work on the measurement framework today.</div>
+    <div class="chat-agent" data-who="Claude Desktop">You have three priority channels defined — content, paid social, and partner co-marketing. KPIs are drafted for content and paid. The open question is partner channel attribution. Want to start there, or finalize the measurement approach for the first two channels first?</div>
+  </div>
+
+  <p class="narr">The assistant surfaces the open question before it slips through the cracks. That's the difference between a tool that forgets and one that doesn't.</p>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ MULTI-TOOL ============ -->
+<section class="reveal">
+  <div class="stitle warm">Switching tools mid-project</div>
+  <p class="narr">Maybe you start the strategy brainstorm in <strong>Claude Desktop</strong> because it's good at open-ended reasoning. Then you switch to <strong>Codex Desktop</strong> to structure the plan into a detailed outline with specific deliverables.</p>
+  <p class="narr">Different tools. Same project. Without shared memory, switching tools resets context. With Momento, the second tool picks up the full context — decisions, constraints, open questions, plan structure — from the first.</p>
+
+  <div class="principle">
+    <h4>The principle</h4>
+    <p>Momento doesn't store conversations. It stores <strong>what was decided, what was learned, and what's next</strong>. That makes it portable across any tool that can read it.</p>
+  </div>
+</section>
+
+<div class="divider short"></div>
+
+<!-- ============ USE CASES ============ -->
+<section class="reveal">
+  <div class="stitle">Works for any project that spans sessions</div>
+
+  <div class="usecases">
+    <div class="usecase">
+      <div class="usecase-icon">📝</div>
+      <h4>Writing & Editing</h4>
+      <p>Long documents, reports, blog series. The assistant remembers your voice, structure decisions, and where you left off.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-icon">🔬</div>
+      <h4>Research</h4>
+      <p>Multi-day investigations. Sources reviewed, hypotheses tested, dead ends marked — nothing gets re-explored.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-icon">🚀</div>
+      <h4>Product Launches</h4>
+      <p>Timelines, stakeholder constraints, messaging decisions. The assistant tracks what's been finalized and what's still open.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-icon">🎓</div>
+      <h4>Academic Projects</h4>
+      <p>Thesis planning, lit reviews, argument structure. Months of accumulated reasoning preserved across hundreds of sessions.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-icon">📊</div>
+      <h4>Strategic Planning</h4>
+      <p>Quarterly goals, OKRs, budget allocation. Decisions with rationale, rejected alternatives, and implications — all recoverable.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-icon">🤖</div>
+      <h4>Long-Lived Assistants</h4>
+      <p>Personal AI that actually knows your projects, preferences, and context. Not just chat history — structured memory.</p>
+    </div>
+  </div>
+</section>
+
+<div class="divider short"></div>
+
+<!-- ============ CORE INSIGHT ============ -->
+<section class="reveal">
+  <div class="principle">
+    <h4>Why this matters now</h4>
+    <p>AI tools are getting powerful enough to be real collaborators. But <strong>every session still starts from zero.</strong> The bottleneck isn't intelligence — it's memory. Momento removes that bottleneck for any kind of work, with any tool, across any number of sessions.</p>
+  </div>
+</section>
+
+<div class="divider short"></div>
+
+<!-- ============ TAKEAWAY ============ -->
+<div class="takeaway reveal">
+  <h2>Your project is bigger<br>than one session.<br><em>Your AI should know that.</em></h2>
+  <p>Momento gives AI assistants persistent, structured memory — so your context survives across sessions, across tools, and across days.</p>
+</div>
+
+<div class="foot">
+  Momento v0.9 · Persistent project memory for any AI workflow.
+</div>
+
+<script>
+const obs = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+</script>
+</body>
+</html>

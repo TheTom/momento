@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "momento"
+version = "0.1.0"
+description = "Deterministic State Recovery for AI Coding Agents"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-xdist>=3.5",
+]
+
+[project.scripts]
+momento = "momento.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "must_pass: blocks ship",
+    "should_pass: fix within days",
+    "nice_to_have: v0.1.1",
+]

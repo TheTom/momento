@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Momento - FAQ</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#060609;--surface:#0b0b12;--s2:#111119;--s3:#191923;
+  --border:#262638;--bhi:#363650;
+  --text:#dcdce8;--dim:#8a8aa4;--muted:#50506a;
+  --green:#5ce0aa;--gdim:rgba(92,224,170,.07);--gborder:rgba(92,224,170,.22);
+  --orange:#f0b429;--odim:rgba(240,180,41,.07);--oborder:rgba(240,180,41,.22);
+  --blue:#5b9cf5;--bdim:rgba(91,156,245,.06);
+  --purple:#9b7afa;
+  --red:#ef6461;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased}
+
+.page{max-width:720px;margin:0 auto;padding:0 32px}
+
+/* Header */
+.hero{padding:80px 32px 48px;max-width:720px;margin:0 auto;text-align:center}
+.hero-badge{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:16px}
+.hero h1{font-family:'Instrument Serif',serif;font-size:clamp(32px,4.5vw,44px);font-weight:400;color:var(--text);line-height:1.2;margin-bottom:16px}
+.hero p{font-size:16px;color:var(--dim);line-height:1.7;max-width:480px;margin:0 auto}
+
+.divider{height:1px;background:var(--border);margin:48px auto;max-width:720px}
+
+/* FAQ items */
+.faq{margin-bottom:48px}
+
+.faq-q{font-family:'Instrument Serif',serif;font-size:22px;font-weight:400;color:var(--text);line-height:1.35;margin-bottom:14px}
+
+.faq-a{font-size:16px;color:var(--dim);line-height:1.75;margin-bottom:16px}
+.faq-a strong{color:var(--text);font-weight:500}
+.faq-a em{color:var(--muted)}
+.faq-a code{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--green);background:var(--s2);padding:2px 6px;border-radius:3px}
+
+/* Short answer block */
+.faq-short{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;margin-bottom:16px;display:inline-block}
+.faq-short.no{color:var(--red)}
+.faq-short.yes{color:var(--green)}
+
+/* Detail callout */
+.faq-detail{border-left:3px solid var(--border);padding:14px 20px;margin:16px 0;background:var(--s2);border-radius:0 8px 8px 0}
+.faq-detail p{font-size:14px;color:var(--dim);line-height:1.65;margin-bottom:8px}
+.faq-detail p:last-child{margin-bottom:0}
+.faq-detail strong{color:var(--text);font-weight:500}
+
+/* Tool support table */
+.compat{width:100%;border-collapse:collapse;margin:20px 0;font-size:14px}
+.compat th{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--border)}
+.compat td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--dim)}
+.compat td:first-child{color:var(--text);font-weight:500}
+.compat .yes{color:var(--green);font-family:'JetBrains Mono',monospace;font-weight:600;font-size:12px}
+.compat .no{color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:12px}
+.compat .planned{color:var(--orange);font-family:'JetBrains Mono',monospace;font-size:12px}
+
+/* Principle box */
+.principle{border-left:3px solid var(--green);background:var(--gdim);border-radius:0 8px 8px 0;padding:18px 22px;margin:20px 0}
+.principle p{font-size:15px;color:var(--dim);line-height:1.6}
+.principle p strong{color:var(--text)}
+
+/* Section label */
+.section-label{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:32px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+
+/* Footer */
+.foot{text-align:center;padding:32px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.5px;border-top:1px solid var(--border);margin-top:24px;max-width:720px;margin-left:auto;margin-right:auto}
+
+.reveal{opacity:0;transform:translateY(20px);transition:opacity .5s ease,transform .5s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-badge">Momento</div>
+  <h1>Frequently asked questions</h1>
+  <p>Honest answers. No hedging.</p>
+</div>
+
+<div class="divider"></div>
+
+<div class="page">
+
+<!-- ============ COMPATIBILITY ============ -->
+<div class="section-label reveal">Compatibility</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Does Momento work with ChatGPT or Claude in the browser?</div>
+  <div class="faq-short no">No.</div>
+  <p class="faq-a">Momento runs locally on your machine and integrates with AI tools that support local tool access, such as Claude Code or Codex Desktop.</p>
+  <p class="faq-a">Web-based chat interfaces like chat.openai.com or claude.ai do not allow third-party local tools to register with the model. Without that capability, Momento cannot connect to them. Momento requires an environment where the AI agent can call local tools directly.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Which tools does Momento work with?</div>
+  <p class="faq-a">Momento integrates with tools that support local extensibility. Currently:</p>
+  <table class="compat">
+    <thead><tr><th>Tool</th><th>Status</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Claude Code</td><td class="yes">Supported</td><td>Via MCP. Adapter in CLAUDE.md.</td></tr>
+      <tr><td>Codex Desktop</td><td class="yes">Supported</td><td>Via MCP. Adapter in .codex_instructions.md.</td></tr>
+      <tr><td>Cursor</td><td class="planned">Exploring</td><td>Rules file integration. v0.3.</td></tr>
+      <tr><td>Aider</td><td class="planned">Exploring</td><td>Session-oriented adapter. v0.3.</td></tr>
+      <tr><td>Windsurf</td><td class="planned">Exploring</td><td>Instruction block adapter. v0.3.</td></tr>
+      <tr><td>ChatGPT (web)</td><td class="no">Not supported</td><td>No local tool access.</td></tr>
+      <tr><td>Claude.ai (web)</td><td class="no">Not supported</td><td>No local tool access.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Could Momento ever work with web interfaces?</div>
+  <p class="faq-a">If web-based AI tools add support for local tool registration, Momento could integrate. They do not today.</p>
+  <p class="faq-a">A browser extension that injects context is technically possible but fragile, dependent on DOM structure, and breaks whenever the provider changes their UI. That is not something we would ship.</p>
+</div>
+
+<div class="divider"></div>
+
+<!-- ============ DATA & PRIVACY ============ -->
+<div class="section-label reveal">Data &amp; Privacy</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Why is Momento local-only?</div>
+  <p class="faq-a">Momento is designed to keep your project memory on your machine. No cloud sync, no external storage, no third-party access. Your project context stays under your control.</p>
+  <div class="principle">
+    <p>Your data never leaves your device. That is a design choice, not a limitation.</p>
+  </div>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Where is data stored?</div>
+  <p class="faq-a">A single SQLite file at <code>~/.momento/knowledge.db</code>. One file. Zero dependencies. You can inspect it, back it up, or delete it at any time.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Does Momento send data to any server?</div>
+  <div class="faq-short no">No.</div>
+  <p class="faq-a">Momento is a local MCP server. It reads and writes to a local SQLite file. It makes no network requests. It has no telemetry, no analytics, no phone-home behavior.</p>
+</div>
+
+<div class="divider"></div>
+
+<!-- ============ HOW IT WORKS ============ -->
+<div class="section-label reveal">How It Works</div>
+
+<div class="faq reveal">
+  <div class="faq-q">What does Momento actually store?</div>
+  <p class="faq-a"><strong>Structured memory, not chat history.</strong> Momento stores five types of entries:</p>
+  <div class="faq-detail">
+    <p><strong>session_state</strong> &mdash; Where you left off. Current task, recent progress, next step.</p>
+    <p><strong>decision</strong> &mdash; What was chosen, why, what was rejected, and the implications.</p>
+    <p><strong>plan</strong> &mdash; Finalized plans with phasing and rationale.</p>
+    <p><strong>gotcha</strong> &mdash; Bugs, pitfalls, and non-obvious constraints you've already hit.</p>
+    <p><strong>pattern</strong> &mdash; Recurring approaches or conventions in your project.</p>
+  </div>
+  <p class="faq-a">Each entry is concise and actionable. Momento does not replay conversations. It restores the distilled state of your project. Restore is deterministic: the same project state produces the same retrieval ordering every time.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">How does the agent know when to save?</div>
+  <p class="faq-a">Cadence-based checkpointing. The agent is instructed to save after completing significant work: a file change, a resolved bug, a finalized decision. These are observable events the model reliably recognizes.</p>
+  <p class="faq-a">Momento does not depend on context window introspection or token thresholds. Frequent small saves are more reliable than threshold-triggered panic saves.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">How does restore know what to return?</div>
+  <p class="faq-a">Restore mode follows a fixed priority order. Session state first, then plans, decisions, gotchas, patterns, and finally cross-project entries. This ordering is deterministic, not search-ranked. Within each tier, entries are sorted by surface match, then branch match, then recency.</p>
+  <p class="faq-a">In monorepos, Momento detects the current working directory and prefers entries matching that surface. If you're in <code>/server</code>, backend checkpoints surface first. If you're in <code>/ios</code>, iOS checkpoints lead. This is a preference, not a filter.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Does it work across different agents on the same project?</div>
+  <div class="faq-short yes">Yes.</div>
+  <p class="faq-a">Momento is agent-agnostic at the data layer. If Claude Code saves a checkpoint in the morning and Codex retrieves context in the afternoon, the restore works identically. The memory layer stays constant. The reasoning engine can change.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Does Momento isolate branches?</div>
+  <div class="faq-short no">No.</div>
+  <p class="faq-a">Branches are not isolated. Momento captures the current branch at save time and prefers entries from the current branch at restore time, but shared decisions and patterns remain visible across all branches. Memory is ranked, not partitioned.</p>
+  <p class="faq-a">This means a gotcha saved on <code>main</code> still appears when you're on a feature branch — it's just ranked lower than branch-specific entries. Universal knowledge stays accessible.</p>
+</div>
+
+<div class="divider"></div>
+
+<!-- ============ SCOPE ============ -->
+<div class="section-label reveal">Scope</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Is Momento only for coding?</div>
+  <div class="faq-short no">No.</div>
+  <p class="faq-a">Momento stores decisions, reasoning, and task state. That applies to any project that spans multiple sessions: writing, research, strategic planning, product launches, academic work. If it's too complex for one sitting and you care about continuity, Momento helps.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Is Momento a "second brain" or personal knowledge base?</div>
+  <div class="faq-short no">No.</div>
+  <p class="faq-a">Momento is project memory for AI workflows. It captures knowledge from working sessions so that context survives across sessions and tools. It is not a replacement for Obsidian, Notion, or a notes app.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Does Momento decide what to remember?</div>
+  <div class="faq-short no">No.</div>
+  <p class="faq-a">The agent decides when to call. Momento decides what to return. There is no autonomous learning or background analysis. Every entry is either created by an explicit agent action or by the developer via CLI.</p>
+  <div class="principle">
+    <p><strong>Agents decide when to call. Momento decides what to return.</strong> Clean separation. No magic.</p>
+  </div>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Can I see and manage what's stored?</div>
+  <div class="faq-short yes">Yes.</div>
+  <p class="faq-a">The CLI gives you full visibility: <code>momento inspect</code> to browse entries, <code>momento prune</code> to clean up, <code>momento log</code> to add entries manually. The SQLite database is a standard file you can query directly if you prefer.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">What happens if I delete Momento?</div>
+  <p class="faq-a">Nothing breaks. You lose saved memory, but your AI tools continue working normally. Momento augments sessions; it does not replace them.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Does Momento reduce token usage?</div>
+  <p class="faq-a">Indirectly, yes. Without persistent memory, every new session starts with you re-explaining architecture, restating decisions, and reconstructing what happened last time. That repeated context burns tokens — often 5,000-8,000 per re-orientation.</p>
+  <p class="faq-a">Momento restores concise, structured project state in under 2,000 tokens. No multi-turn clarification loops. No redundant context loading. Over weeks of daily use, the savings compound. But the primary benefit is continuity and clarity. Lower token usage is a side effect, not the goal.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">What happens if two sessions save at the same time?</div>
+  <p class="faq-a">Momento stores entries with timestamps and surface tags. Restore always prefers the most recent relevant session state, with surface-matching entries ranked first. There is no conflict resolution needed because Momento is additive, not transactional.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Why build this? Won't AI providers solve memory eventually?</div>
+  <p class="faq-a">Eventually, probably. Today, they don't. And when they do, it will likely be cloud-based, vendor-locked, and opaque. Momento exists because project continuity matters now, and it should be local, portable, and under your control.</p>
+</div>
+
+</div>
+
+<div class="divider"></div>
+
+<div class="page">
+
+<!-- ============ CYNICAL QUESTIONS ============ -->
+<div class="section-label reveal">The Cynical Questions</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Can't I just use the agent's chat history?</div>
+  <p class="faq-a">You can. Until it disappears.</p>
+  <p class="faq-a">Chat history is agent-specific, UI-bound, and often lost on <code>/clear</code>, compaction failure, or session reset. It is not structured for reuse across tools.</p>
+  <p class="faq-a">Momento stores distilled, structured knowledge in a local, portable database. It survives <code>/clear</code>. It survives tool switching. It survives restarts.</p>
+  <div class="principle">
+    <p>Chat history is a transcript. Momento is durable intent.</p>
+  </div>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Can't I just use git commit messages?</div>
+  <p class="faq-a">Commit messages explain what changed. They rarely explain why it was chosen, what was rejected, known pitfalls, or in-progress work before commit.</p>
+  <p class="faq-a">Momento captures decisions and task state before code is finalized. It complements git. It does not replace it.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Why not just add logging to my app?</div>
+  <p class="faq-a">Application logging captures runtime behavior. Momento captures reasoning about architecture, constraints, and patterns.</p>
+  <p class="faq-a">Logs answer: <em>"What happened?"</em></p>
+  <p class="faq-a">Momento answers: <em>"Why did we build it this way?"</em></p>
+  <p class="faq-a">Different layer. Different purpose.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Why not just store everything in a JSON file?</div>
+  <p class="faq-a">You could. You would also lose full-text search, indexed retrieval, deterministic restore ordering, and concurrency safety. Then you would reimplement a database badly.</p>
+  <p class="faq-a">SQLite is a single file. It is simpler than inventing your own persistence format.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Why not use a vector database?</div>
+  <p class="faq-a">Because the core problem is not semantic search. The core problem is restoring working state after context loss.</p>
+  <p class="faq-a">BM25 + tags + deterministic tier ordering is faster, predictable, easier to reason about, and has zero external dependencies.</p>
+  <p class="faq-a">Vectors are useful when cross-project semantic recall becomes dominant. That is a later optimization, not a v0.1 requirement.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Can't I just write better prompts?</div>
+  <p class="faq-a">Better prompts do not survive context resets. They do not share knowledge across agents. They do not remember last week's decision.</p>
+  <div class="principle">
+    <p>Prompts shape behavior. Momento preserves memory.</p>
+  </div>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Isn't this just note-taking?</div>
+  <div class="faq-short no">No.</div>
+  <p class="faq-a">Notes are written for humans. Momento entries are written for agents: structured, short, tagged, ranked, and bounded by token budget. The output is optimized for machine rehydration, not human reading comfort.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Isn't this overkill for a solo developer?</div>
+  <p class="faq-a">If you never switch agents, lose context, work across multiple branches, forget why you made a decision, or re-solve the same bug twice &mdash; then yes, you don't need it.</p>
+  <p class="faq-a">If any of those happen weekly, it pays for itself quickly.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">What happens if the agent ignores the instructions?</div>
+  <p class="faq-a">Nothing breaks. The memory layer works independently. You can run <code>momento save</code>, <code>momento status</code>, and <code>momento retrieve</code> from the CLI at any time.</p>
+  <p class="faq-a">Adapter automation improves cadence. It is not required for correctness.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Does this store my code?</div>
+  <div class="faq-short no">No.</div>
+  <p class="faq-a">Momento stores decisions, plans, gotchas, patterns, and task checkpoints. It does not index or store your source code. It stores reasoning about your code.</p>
+</div>
+
+<div class="faq reveal">
+  <div class="faq-q">Will this become another knowledge graveyard?</div>
+  <p class="faq-a">Only if you log everything. Momento is built around hard size limits, explicit logging, confidence weighting, session-state decay, and manual pruning.</p>
+  <div class="principle">
+    <p>The goal is signal density, not accumulation.</p>
+  </div>
+</div>
+
+</div>
+
+<div class="foot">
+  Momento v0.9 &middot; Two tools. Agent-agnostic. Local-first. Deterministic.
+</div>
+
+<script>
+const obs = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+</script>
+</body>
+</html>

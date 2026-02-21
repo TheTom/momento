@@ -1,0 +1,921 @@
+# Momento v0.9 — Acceptance Tests + Pre-Flight Fixes
+
+Two sections:
+1. Gaps found in pre-flight review (fix before coding)
+2. Must-pass tests for v1 to be considered functional
+
+---
+
+## Pre-Flight Gaps
+
+### Gap 1: FTS5 Sync Triggers Missing from Schema
+
+The PRD defines a content-synced FTS5 table:
+
+```sql
+CREATE VIRTUAL TABLE knowledge_fts USING fts5(
+  content, tags,
+  content=knowledge,
+  content_rowid=rowid
+);
+```
+
+But content-synced FTS5 tables do NOT auto-sync. Without explicit
+triggers, INSERT/UPDATE/DELETE on the `knowledge` table will not
+update the FTS index. Search mode will silently return stale or
+empty results.
+
+**Required triggers (add to schema):**
+
+```sql
+-- Keep FTS index in sync with knowledge table
+CREATE TRIGGER knowledge_ai AFTER INSERT ON knowledge BEGIN
+  INSERT INTO knowledge_fts(rowid, content, tags)
+  VALUES (new.rowid, new.content, new.tags);
+END;
+
+CREATE TRIGGER knowledge_ad AFTER DELETE ON knowledge BEGIN
+  INSERT INTO knowledge_fts(knowledge_fts, rowid, content, tags)
+  VALUES('delete', old.rowid, old.content, old.tags);
+END;
+
+CREATE TRIGGER knowledge_au AFTER UPDATE ON knowledge BEGIN
+  INSERT INTO knowledge_fts(knowledge_fts, rowid, content, tags)
+  VALUES('delete', old.rowid, old.content, old.tags);
+  INSERT INTO knowledge_fts(rowid, content, tags)
+  VALUES (new.rowid, new.content, new.tags);
+END;
+```
+
+This is not optional. Without these, search mode is broken.
+
+---
+
+### Gap 2: DB Deletion / Recreation
+
+If someone deletes `~/.momento/knowledge.db` while an agent is running,
+or on a fresh machine, the next MCP call must not crash.
+
+**Required behavior:**
+
+On every connection open:
+1. Check if DB file exists
+2. If not, create it (schema + momento_meta + WAL + pragmas)
+3. If yes, check schema_version, run migrations if needed
+4. Set busy_timeout (per-connection)
+
+DB creation must be idempotent. Calling `ensure_db()` twice must
+not error. Use `CREATE TABLE IF NOT EXISTS` throughout.
+
+---
+
+### Gap 3: Ingestion Error Isolation
+
+JSONL parsing during `momento ingest` can encounter:
+- Malformed JSON lines
+- Missing expected fields
+- Unexpected encoding
+- Corrupted files
+
+**Required behavior:**
+
+Each file and each line is processed independently. A bad line
+skips with a warning. A bad file skips with an error. The run
+continues. Never crash the entire ingest on one bad entry.
+
+```python
+for file in jsonl_files:
+    try:
+        for line_num, line in enumerate(file):
+            try:
+                entry = parse_line(line)
+                process(entry)
+            except Exception as e:
+                warn(f"Skipped line {line_num} in {file}: {e}")
+    except Exception as e:
+        error(f"Skipped file {file}: {e}")
+```
+
+---
+
+### Gap 4: `momento save` Auto-Behavior
+
+The PRD says `momento save` is a quick checkpoint shortcut but doesn't
+specify its exact behavior.
+
+**Specification:**
+
+```bash
+momento save "Working on auth migration. Next: test Keychain fallback."
+```
+
+Behavior:
+- Type: `session_state` (always, not configurable)
+- Project: auto-resolved from cwd
+- Branch: auto-detected from git
+- Tags: auto-derived from surface detection (e.g., cwd contains
+  `/server` -> tags include "server"). If no surface detected, tags
+  default to `[]`.
+- No required tags. Empty tags are valid for `momento save`.
+- `momento log` supports explicit `--tags` for full control.
+- Tag precedence: surface-derived tags are prepended, not replaced.
+  If a future extension adds `--tags` to `momento save`, the result
+  is `[surface_tag] + [explicit_tags]`, not one or the other.
+
+`momento save` is the fast path. `momento log` is the precise path.
+
+---
+
+### Gap 5: WAL Initialization Detail
+
+```python
+def ensure_db(path: str) -> Connection:
+    db_exists = os.path.exists(path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA busy_timeout=5000")
+
+    if not db_exists:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        create_schema(conn)
+    else:
+        version = get_schema_version(conn)  # if momento_meta missing, return 0
+        run_migrations(conn, version)
+
+    return conn
+```
+
+WAL and synchronous are set once on creation (they persist in the
+file). busy_timeout is set every connection (it does not persist).
+
+If the DB file exists but is corrupted (not a valid SQLite file),
+catch the exception and surface a clear error:
+
+```
+Error: ~/.momento/knowledge.db is corrupted. 
+Rename or delete it to start fresh. Momento will recreate the database.
+```
+
+Do not silently overwrite a corrupted file.
+
+---
+
+## V1 Must-Pass Tests
+
+Every test below must pass for v0.1 to ship. Organized by subsystem.
+
+---
+
+### T1: Project Identity
+
+**T1.1 — Git remote resolution**
+```
+Given: cwd is inside a git repo with remote.origin.url set
+When: resolve_project_id(cwd)
+Then: returns hash(remote_url), basename(git_root)
+```
+
+**T1.2 — Git root fallback (no remote)**
+```
+Given: cwd is inside a git repo with no remote
+When: resolve_project_id(cwd)
+Then: returns hash(git_common_dir), basename(git_root)
+```
+
+**T1.3 — Absolute path fallback (no git)**
+```
+Given: cwd is not inside a git repo
+When: resolve_project_id(cwd)
+Then: returns hash(abs_path), basename(abs_path)
+```
+
+**T1.4 — Worktree identity unification**
+```
+Given: two git worktrees of the same repo at /code/app and /code/app-billing
+When: resolve_project_id for each
+Then: both return the same project_id
+```
+
+**T1.5 — Branch detection**
+```
+Given: cwd is on branch "feature/billing-rewrite"
+When: resolve_branch(cwd)
+Then: returns "feature/billing-rewrite"
+```
+
+**T1.6 — Detached HEAD**
+```
+Given: cwd is in detached HEAD state
+When: resolve_branch(cwd)
+Then: returns None (not empty string)
+```
+
+**T1.7 — Branch rename degradation**
+```
+Given: entry saved with branch "feature/x"
+       branch renamed to "feature/y"
+When: retrieve_context() on branch "feature/y"
+Then: old entry from "feature/x" is demoted (no branch match)
+      but still visible (not filtered)
+      graceful degradation, not data loss
+```
+
+**T1.8 — Non-git branch**
+```
+Given: cwd is not inside a git repo
+When: resolve_branch(cwd)
+Then: returns None
+```
+
+**T1.9 — Branch comparison is case-sensitive**
+```
+Given: entry saved with branch "feature/Auth"
+       current branch is "feature/auth"
+When: retrieve_context()
+Then: entry does NOT get branch-match preference
+      (exact string equality, not case-insensitive)
+      branch names are never lowercased
+```
+
+---
+
+### T2: Schema + Migration
+
+**T2.1 — Fresh DB creation**
+```
+Given: ~/.momento/knowledge.db does not exist
+When: ensure_db() is called
+Then: DB is created with all tables, indexes, triggers, momento_meta
+      schema_version = 1
+      journal_mode = WAL
+```
+
+**T2.2 — Idempotent creation**
+```
+Given: DB already exists at schema_version 1
+When: ensure_db() is called again
+Then: no error, no duplicate tables, version unchanged
+```
+
+**T2.3 — DB deleted mid-session**
+```
+Given: DB file is deleted while server is running
+When: next MCP call triggers ensure_db()
+Then: DB is recreated cleanly, call succeeds
+```
+
+**T2.4 — Partial schema (momento_meta missing)**
+```
+Given: DB exists with knowledge table but no momento_meta table
+When: ensure_db()
+Then: schema_version treated as 0
+      migrations run cleanly
+      FTS table + triggers created if missing
+      momento_meta created with correct version
+```
+
+**T2.5 — Corrupted DB file**
+```
+Given: knowledge.db contains non-SQLite data (e.g., random bytes)
+When: ensure_db()
+Then: clear error message: "knowledge.db is corrupted"
+      DB not silently overwritten
+      process exits non-zero
+```
+
+**T2.6 — FTS5 triggers exist**
+```
+Given: fresh DB
+When: inspect triggers
+Then: knowledge_ai, knowledge_ad, knowledge_au all exist
+```
+
+---
+
+### T3: log_knowledge (Save)
+
+**T3.1 — Basic save**
+```
+Given: valid content, type="decision", tags=["auth"]
+When: log_knowledge() is called
+Then: entry is inserted with correct project_id, branch, timestamp (UTC Z)
+      FTS index is updated (searchable immediately)
+```
+
+**T3.2 — Entry size rejection**
+```
+Given: content is 1200 chars, type="session_state" (limit: 500)
+When: log_knowledge() is called
+Then: error returned with char count, limit, and hint
+      nothing is inserted
+```
+
+**T3.3 — Size limits per type**
+```
+Given: content at exactly the limit for each type
+When: log_knowledge() for session_state(500), decision(800),
+      plan(800), gotcha(400), pattern(400)
+Then: all succeed (boundary test)
+```
+
+**T3.4 — Dedup by content hash**
+```
+Given: identical content logged twice for same project
+When: second log_knowledge() is called
+Then: silently skipped (no error, no duplicate)
+```
+
+**T3.5 — Tag normalization**
+```
+Given: tags=[" Auth ", "iOS", "  BILLING"]
+When: log_knowledge() is called
+Then: stored as ["auth", "billing", "ios"] (lowercased, trimmed, sorted alphabetically)
+```
+
+**T3.6 — Tag canonical ordering for dedup**
+```
+Given: entry A with content "X" and tags=["ios", "auth"]
+       entry B with content "X" and tags=["auth", "ios"]
+When: both log_knowledge() calls execute
+Then: second is skipped (tags canonicalized before hash, same content_hash)
+```
+
+**T3.7 — Branch auto-capture**
+```
+Given: cwd is on branch "feature/x"
+When: log_knowledge() is called without explicit branch
+Then: entry.branch = "feature/x"
+```
+
+**T3.8 — Timestamps are UTC**
+```
+Given: any log_knowledge() call
+When: entry is inserted
+Then: created_at and updated_at match YYYY-MM-DDTHH:MM:SSZ
+      (Z suffix, not +00:00, not local time)
+      generated by Python utcnow(), not SQLite datetime('now')
+```
+
+**T3.9 — ID format is UUIDv4**
+```
+Given: any log_knowledge() call
+When: entry is inserted
+Then: id is valid UUIDv4 format (8-4-4-4-12 hex, version 4)
+      deterministic tie-breaker via id ASC is stable
+```
+
+**T3.10 — Transaction atomicity**
+```
+Given: log_knowledge() call where FTS trigger would fail
+       (simulated, e.g., corrupted FTS index)
+When: INSERT into knowledge executes
+Then: entire transaction rolls back
+      knowledge table has no partial entry
+      no orphaned FTS row
+```
+
+---
+
+### T4: retrieve_context — Restore Mode (THE CORE TEST)
+
+**T4.1 — The Restore Contract**
+```
+Given:
+  - project_id = "abc123"
+  - branch = "feature/billing"
+  - cwd surface = "server"
+  - DB contains:
+    - 3 session_state: 2 tagged server+feature/billing, 1 tagged ios+main
+    - 2 plan: 1 on feature/billing, 1 on main
+    - 4 decision: 2 on feature/billing, 2 on main
+    - 3 gotcha: 1 tagged server, 2 tagged ios
+    - 2 pattern: no branch tag
+    - 2 cross-project entries
+
+When: retrieve_context(query=empty, include_session_state=true)
+
+Then:
+  Tier 1 (session_state): 2 server+billing entries first, then 1 ios+main
+  Tier 2 (plan): billing plan first, then main plan
+  Tier 3 (decision): 2 billing decisions, then main decisions (up to 3 total)
+  Tier 4 (gotcha+pattern): server gotcha first, up to 4 combined
+  Tier 5 (cross-project): up to 2
+  Total tokens < 2000
+  No entry truncated mid-content
+  Within each tier: surface match > branch match > recency > id
+```
+
+**T4.2 — Empty project**
+```
+Given: no entries for current project
+When: retrieve_context(query=empty)
+Then: returns structured empty response with tip
+      "No session checkpoints found for this project."
+```
+
+**T4.3 — Token budget enforcement**
+```
+Given: 17 entries all at max size (would exceed 2000 tokens)
+When: retrieve_context()
+Then: returns entries in tier order until budget exhausted
+      last entry is complete (not truncated)
+      lower-tier entries are omitted
+      total estimated tokens <= 2100 (5% tolerance on len/4 approximation)
+```
+
+**T4.4 — Token estimation includes markdown scaffolding**
+```
+Given: restore output with section headers, metadata brackets, blank lines
+When: token budget is calculated
+Then: estimation uses len(rendered_chunk)/4, not len(raw_content)/4
+      headers like "## Active Task" and metadata like
+      "[decision | server | 1d ago]" are counted toward budget
+```
+
+**T4.5 — Tier 1 exhausts budget**
+```
+Given: Tier 1 session_state entries consume full token budget
+When: retrieve_context()
+Then: no Tier 2+ entries included
+      greedy fill stops at budget, does not backtrack
+```
+
+**T4.6 — Session state 48h window**
+```
+Given: session_state entries from 1h ago, 24h ago, and 72h ago
+When: retrieve_context()
+Then: only 1h and 24h entries appear. 72h entry excluded.
+      48h filter is SQL WHERE clause, not Python post-filter.
+```
+
+**T4.7 — Cross-project isolation**
+```
+Given: entries from Project A and Project B in same DB
+When: retrieve_context() in Project A
+Then: Project B entries only appear in Tier 5 (cross-project, tag match)
+      Project B entries never appear in tiers 1-4
+```
+
+**T4.8 — Tier quota enforcement**
+```
+Given: 6 decisions exist for project (quota is 3)
+       token budget has room for all 6
+When: retrieve_context()
+Then: only 3 decisions included
+      quota is enforced even if budget allows more
+```
+
+**T4.9 — Surface preference over branch**
+```
+Given:
+  - cwd surface = "server", branch = "feature/x"
+  - decision A: tagged server, branch main
+  - decision B: tagged ios, branch feature/x
+
+When: retrieve_context()
+Then: decision A ranks above decision B
+      (surface match outranks branch match)
+```
+
+**T4.10 — Branch preference over recency**
+```
+Given:
+  - branch = "feature/x"
+  - decision A: branch feature/x, 3 days ago
+  - decision B: branch main, 1 day ago
+  - same surface or no surface
+
+When: retrieve_context()
+Then: decision A ranks above decision B
+      (branch match outranks recency)
+```
+
+**T4.11 — Cross-project never above project entries**
+```
+Given: cross-project entry with high confidence, project entry with low confidence
+When: retrieve_context()
+Then: project entry appears first. Cross-project always in tier 5.
+```
+
+**T4.12 — Determinism (idempotency)**
+```
+Given: same DB state, same cwd, same branch
+When: retrieve_context() called twice
+Then: identical output both times
+      retrieval_count increment does not affect ordering
+```
+
+**T4.13 — Determinism tie-breaker (id fallback)**
+```
+Given: two entries with identical created_at, identical surface match,
+       identical branch match, but different id values
+When: retrieve_context()
+Then: entry with lower id (ASC) appears first, consistently
+      no implicit rowid ordering leak
+```
+
+**T4.14 — retrieval_count does not mutate updated_at**
+```
+Given: entry with known updated_at
+When: retrieve_context() returns that entry
+Then: knowledge.updated_at is unchanged
+      knowledge_stats.retrieval_count incremented
+```
+
+**T4.15 — retrieval_count in knowledge_stats, not knowledge**
+```
+Given: retrieval_count is incremented via knowledge_stats upsert
+When: check knowledge table and FTS index
+Then: no UPDATE fired on knowledge table
+      no FTS delete+reinsert occurred
+      knowledge_au trigger did not fire
+```
+
+---
+
+### T5: retrieve_context — Search Mode
+
+**T5.1 — Basic keyword search**
+```
+Given: entries containing "keychain", "token", "auth"
+When: retrieve_context(query="keychain race condition")
+Then: returns matching entries ranked by FTS5 relevance
+      scoped to current project + cross-project
+```
+
+**T5.2 — FTS5 sync after insert**
+```
+Given: log_knowledge() just inserted an entry with "billing webhook"
+When: retrieve_context(query="billing webhook")
+Then: new entry appears in results (FTS trigger worked)
+```
+
+**T5.3 — FTS5 sync after delete**
+```
+Given: entry with "billing webhook" exists
+When: entry is deleted via prune, then search for "billing webhook"
+Then: deleted entry does not appear (FTS trigger worked)
+```
+
+**T5.4 — Search respects token cap**
+```
+Given: many matching entries
+When: retrieve_context(query="auth")
+Then: max 10 results, under 2000 tokens
+```
+
+**T5.5 — Search mode has no restore ranking**
+```
+Given: entries with surface tags and branch metadata
+When: retrieve_context(query="auth") — search mode
+Then: results ranked by FTS5 relevance only
+      no surface preference applied
+      no branch preference applied
+      no tier ordering applied
+      search is search, not restore
+```
+
+---
+
+### T6: Surface Detection
+
+**T6.1 — Basic surface matching**
+```
+Given: cwd = "/code/app/server/handlers"
+Then: surface = "server"
+```
+
+**T6.2 — Case insensitive**
+```
+Given: cwd = "/code/app/Server/handlers"
+Then: surface = "server"
+```
+
+**T6.3 — Directory boundary (no substring match)**
+```
+Given: cwd = "/code/app/observer/metrics"
+Then: surface = null (not "server")
+```
+
+**T6.4 — Webinar does not match web**
+```
+Given: cwd = "/code/app/webinar/views"
+Then: surface = null (not "web")
+```
+
+**T6.5 — No surface detected**
+```
+Given: cwd = "/code/app/lib/utils"
+Then: surface = null
+```
+
+**T6.6 — Frontend alias**
+```
+Given: cwd = "/code/app/frontend/components"
+Then: surface = "web"
+```
+
+**T6.7 — Nested ambiguous path**
+```
+Given: cwd = "/code/app/server-ios/shared"
+Then: surface is deterministic (either "server" or "ios" or null,
+      but always the same result for the same path)
+      implementation uses first segment match in path order
+```
+
+**T6.8 — Performance at scale**
+```
+Given: 5,000 entries in DB for one project
+When: retrieve_context()
+Then: execution completes in < 500ms
+      (non-strict benchmark, early detection of accidental full scans)
+```
+
+---
+
+### T7: CLI
+
+**T7.1 — momento status**
+```
+Given: project with 5 entries, last checkpoint 10m ago
+When: momento status
+Then: shows project name, branch, entry count by type,
+      last checkpoint time, DB size
+```
+
+**T7.2 — momento status stale warning**
+```
+Given: last checkpoint was 3 hours ago
+When: momento status
+Then: shows warning indicator on last checkpoint line
+```
+
+**T7.3 — momento save**
+```
+Given: cwd in /code/app/server on branch main
+When: momento save "Fixed webhook handler"
+Then: session_state entry created with:
+      project_id from git remote
+      branch = "main"
+      tags include "server" (from surface detection)
+      content = "Fixed webhook handler"
+```
+
+**T7.4 — momento undo project-scoped**
+```
+Given: entries exist for project A and project B
+       cwd is in project A
+When: momento undo
+Then: only deletes most recent entry from project A
+      project B entries untouched
+```
+
+**T7.5 — momento undo confirmation**
+```
+Given: most recent entry exists
+When: momento undo
+Then: shows entry content and asks for confirmation
+      does not delete without y/Y response
+```
+
+**T7.6 — momento inspect**
+```
+Given: project with entries of various types
+When: momento inspect
+Then: lists all entries for current project with type, branch,
+      surface tags, age, and content preview
+```
+
+**T7.7 — momento prune --auto**
+```
+Given: session_state entries from 1d, 3d, 5d, and 10d ago
+When: momento prune --auto
+Then: 10d entry deleted. Others preserved.
+      (7d threshold for auto-prune)
+```
+
+**T7.8 — momento debug-restore**
+```
+Given: entries across all tiers
+When: momento debug-restore
+Then: shows tier breakdown, entries considered per tier,
+      included/skipped status, token estimates, total budget used
+```
+
+---
+
+### T8: Concurrency
+
+**T8.1 — WAL mode active**
+```
+Given: DB initialized via ensure_db()
+When: PRAGMA journal_mode queried
+Then: returns "wal"
+```
+
+**T8.2 — Simultaneous writes**
+```
+Given: two processes writing log_knowledge() at the same time
+When: both INSERT
+Then: both succeed (one waits via busy_timeout)
+      no corruption, no lost writes
+```
+
+**T8.3 — Read during write**
+```
+Given: one process writing, another reading (retrieve_context)
+When: simultaneous execution
+Then: reader gets consistent snapshot (WAL isolation)
+      no blocking, no error
+```
+
+---
+
+### T9: Entry Size Limits
+
+**T9.1 — MCP rejects oversized entry**
+```
+Given: session_state content of 501 chars
+When: log_knowledge() via MCP
+Then: error with count (501), limit (500), and hint
+```
+
+**T9.2 — CLI bypass**
+```
+Given: session_state content of 800 chars
+When: momento log --type session_state "..." via CLI
+Then: entry is accepted (CLI does not enforce limits)
+```
+
+**T9.3 — Rejection message includes hint**
+```
+Given: oversized decision entry
+When: log_knowledge() via MCP
+Then: error includes "Include: what was decided, why, what was rejected."
+```
+
+---
+
+### T10: Ingestion
+
+**T10.1 — Partial failure resilience**
+```
+Given: JSONL file with 10 valid entries and 2 malformed lines
+When: momento ingest
+Then: 10 entries stored, 2 lines skipped with warnings
+      process completes successfully (does not crash)
+```
+
+**T10.2 — Summary output**
+```
+Given: ingestion run with mixed results
+When: momento ingest completes
+Then: prints summary with files processed, files skipped,
+      lines processed, entries stored, lines skipped, dupes skipped
+```
+
+---
+
+### T11: Dedup Edge Cases
+
+**T11.1 — Cross-project dedup**
+```
+Given: two cross-project entries (project_id=NULL) with identical content
+When: second log_knowledge() is called
+Then: silently skipped (COALESCE index catches NULL dedup)
+```
+
+**T11.2 — Same content, different projects**
+```
+Given: identical content logged to Project A and Project B
+When: both log_knowledge() calls execute
+Then: both succeed (dedup is per-project, not global)
+```
+
+---
+
+### T12: Cross-Project Tag Matching
+
+**T12.1 — Tag intersection surfaces cross-project entry**
+```
+Given: Project A entry tagged ["auth","server"]
+       Project B entry tagged ["auth"]
+When: retrieve_context() in Project B
+Then: Project A entry appears in Tier 5 (cross-project)
+      only because tags intersect on "auth"
+```
+
+**T12.2 — No tag match, no cross-project**
+```
+Given: Project A entry tagged ["billing"]
+       Project B entry tagged ["auth"]
+When: retrieve_context() in Project B
+Then: Project A entry does NOT appear (no tag overlap)
+```
+
+---
+
+### T13: Cross-Agent Continuity (The Product Test)
+
+**T13.1 — Claude saves, Codex restores**
+```
+Given: Claude Code calls log_knowledge() with 3 entries
+When: Codex calls retrieve_context() on same project
+Then: all 3 entries appear in restore. Same ordering.
+      Agent identity has zero effect on results.
+```
+
+**T13.2 — Full /clear recovery cycle**
+```
+1. Work in Claude Code for several tasks
+2. Save 2 session_state checkpoints + 1 decision + 1 gotcha
+3. /clear (or simulate context loss)
+4. Call retrieve_context()
+5. Verify: all 4 entries returned in correct tier order
+6. Verify: agent can resume work without re-explanation
+```
+
+This is the acceptance test. If this works, ship.
+
+---
+
+## Test Priority
+
+If time is tight, ship with these passing (in order):
+
+```
+MUST PASS (blocks ship):
+  T2.1   Fresh DB creation
+  T2.6   FTS5 triggers exist
+  T3.1   Basic save
+  T3.2   Entry size rejection
+  T3.4   Dedup by content hash
+  T3.6   Tag canonical ordering for dedup
+  T4.1   The Restore Contract
+  T4.2   Empty project
+  T4.8   Tier quota enforcement
+  T4.9   Surface > branch
+  T4.12  Determinism (idempotency)
+  T5.2   FTS5 sync after insert
+  T6.3   Directory boundary (observer != server)
+  T8.1   WAL mode active
+  T13.2  Full /clear recovery cycle
+
+SHOULD PASS (ship without, fix fast):
+  T1.4   Worktree unification
+  T2.4   Partial schema migration
+  T2.5   Corrupted DB handling
+  T3.10  Transaction atomicity
+  T4.3   Token budget enforcement
+  T4.5   Tier 1 exhausts budget
+  T4.6   Session state 48h window
+  T4.7   Cross-project isolation
+  T5.5   Search mode no restore bleed
+  T7.1   momento status
+  T7.3   momento save
+  T8.2   Simultaneous writes
+  T11.1  Cross-project dedup (NULL handling)
+
+NICE TO HAVE (v0.1.1):
+  T1.7   Branch rename degradation
+  T1.9   Branch case sensitivity
+  T4.4   Token estimation includes markdown
+  T4.13  Determinism tie-breaker
+  T4.15  retrieval_count in knowledge_stats
+  T6.7   Nested ambiguous surface
+  T6.8   Performance at scale (5000 entries)
+  T7.8   debug-restore
+  T9.2   CLI bypass
+  T10.1  Ingestion partial failure
+  T12.1  Cross-project tag matching
+```
+
+---
+
+## Summary
+
+**Gaps found and fixed: 5 (pre-flight) + 8 (final review)**
+
+Pre-flight:
+1. FTS5 sync triggers (schema gap — search breaks without them)
+2. DB deletion/recreation behavior (ensure_db idempotent)
+3. Ingestion error isolation + summary logging
+4. `momento save` exact auto-behavior
+5. WAL initialization detail + corruption handling
+
+Final review:
+1. Transaction boundaries (explicit transaction wrapping log_knowledge)
+2. Clock source (Python utcnow for writes, SQLite datetime for queries)
+3. Token estimation on rendered markdown, not raw content
+4. ID format frozen to UUIDv4 (stable tie-breaker)
+5. Tag canonical ordering (lowercase, dedup, sort, then JSON encode)
+6. Branch comparison case-sensitive (exact match, never lowercased)
+7. Search mode pure FTS5 relevance (no restore ranking bleed)
+8. knowledge_stats separate table (retrieval_count + COALESCE dedup)
+
+**Total tests: 75 across 13 subsystems**
+- 15 must-pass (blocks ship)
+- 13 should-pass (fix within days)
+- 11 nice-to-have (v0.1.1)
+- 36 remaining (full coverage)

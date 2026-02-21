@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Momento — v0.1 Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-alt: #1a1a26;
+    --border: #2a2a3a;
+    --border-accent: #3a3a50;
+    --text: #e0e0e8;
+    --text-dim: #8888a0;
+    --text-muted: #555568;
+    --accent: #6ee7b7;
+    --accent-dim: #2a5c4a;
+    --orange: #f59e0b;
+    --orange-dim: #5c3d0a;
+    --blue: #60a5fa;
+    --blue-dim: #1e3a5f;
+    --purple: #a78bfa;
+    --purple-dim: #3b2d6b;
+    --red: #f87171;
+    --red-dim: #5c2020;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    padding: 40px;
+    overflow-x: hidden;
+  }
+
+  .page {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  header {
+    margin-bottom: 48px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  header h1 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+
+  header p {
+    font-size: 14px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .version-badge {
+    display: inline-block;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 4px;
+    margin-left: 12px;
+    vertical-align: middle;
+  }
+
+  /* Architecture grid */
+  .arch-container {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  /* Section labels */
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+
+  /* Flow arrow between sections */
+  .flow-arrow {
+    display: flex;
+    justify-content: center;
+    padding: 4px 0;
+  }
+
+  .flow-arrow svg {
+    opacity: 0.4;
+  }
+
+  /* Layer containers */
+  .layer {
+    position: relative;
+  }
+
+  .layer-content {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 24px;
+  }
+
+  /* Input layer */
+  .inputs-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .input-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    background: var(--surface-alt);
+    position: relative;
+  }
+
+  .input-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .input-card.manual::before { background: var(--accent); }
+  .input-card.auto::before { background: var(--orange); }
+
+  .input-card h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .input-card.manual h3 { color: var(--accent); }
+  .input-card.auto h3 { color: var(--orange); }
+
+  .input-card p {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .confidence-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+  }
+
+  .conf-high {
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+
+  .conf-med {
+    background: var(--orange-dim);
+    color: var(--orange);
+  }
+
+  /* Store layer */
+  .store-box {
+    display: flex;
+    gap: 24px;
+    align-items: stretch;
+  }
+
+  .store-main {
+    flex: 2;
+    border: 1px solid var(--blue-dim);
+    border-radius: 8px;
+    padding: 20px;
+    background: linear-gradient(135deg, rgba(96, 165, 250, 0.03), transparent);
+    position: relative;
+  }
+
+  .store-main::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--blue);
+    border-radius: 8px 8px 0 0;
+  }
+
+  .store-main h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--blue);
+    margin-bottom: 6px;
+  }
+
+  .store-path {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+  }
+
+  .store-features {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .store-feat {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .store-tiers {
+    flex: 1.2;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .tier-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    background: var(--surface-alt);
+    flex: 1;
+  }
+
+  .tier-card h4 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+
+  .tier-card.durable h4 { color: var(--accent); }
+  .tier-card.session h4 { color: var(--orange); }
+
+  .tier-card p {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .tier-types {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+  }
+
+  .type-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+
+  /* Output layer */
+  .outputs-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .output-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    background: var(--surface-alt);
+    position: relative;
+  }
+
+  .output-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .output-card.mcp::before { background: var(--purple); }
+  .output-card.cli::before { background: var(--text-dim); }
+
+  .output-card h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .output-card.mcp h3 { color: var(--purple); }
+  .output-card.cli h3 { color: var(--text-dim); }
+
+  .tool-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .tool-item {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: var(--surface);
+  }
+
+  .tool-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .tool-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .tool-modes {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .mode-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 600;
+  }
+
+  .mode-restore {
+    background: var(--purple-dim);
+    color: var(--purple);
+  }
+
+  .mode-search {
+    background: var(--blue-dim);
+    color: var(--blue);
+  }
+
+  /* Project identity */
+  .project-section {
+    margin-top: 32px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+  }
+
+  .project-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  .project-box {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    background: var(--surface);
+  }
+
+  .project-box h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+
+  .resolution-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .step-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--bg);
+    background: var(--accent);
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .step-text {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+
+  .step-text code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    background: var(--accent-dim);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* Trigger flow */
+  .trigger-box {
+    border: 1px dashed var(--border-accent);
+    border-radius: 8px;
+    padding: 20px;
+    background: transparent;
+  }
+
+  .trigger-box h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--orange);
+    margin-bottom: 12px;
+  }
+
+  .trigger-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .trigger-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .trigger-when {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--orange);
+    background: var(--orange-dim);
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+
+  .trigger-action {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .trigger-action code {
+    color: var(--purple);
+  }
+
+  /* Properties badges */
+  .properties {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+
+  .prop-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .prop-badge .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* Flow diagram */
+  .flow-section {
+    margin-top: 40px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+  }
+
+  .flow-section h2 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 24px;
+  }
+
+  .flow-timeline {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    position: relative;
+    padding: 0 8px;
+  }
+
+  .flow-step {
+    flex: 1;
+    text-align: center;
+    position: relative;
+    padding: 0 6px;
+  }
+
+  .flow-step-inner {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 10px;
+    background: var(--surface);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+  }
+
+  .flow-step-inner.highlight {
+    border-color: var(--accent-dim);
+    background: linear-gradient(135deg, rgba(110, 231, 183, 0.04), transparent);
+  }
+
+  .flow-step-inner.danger {
+    border-color: var(--red-dim);
+    background: linear-gradient(135deg, rgba(248, 113, 113, 0.04), transparent);
+  }
+
+  .flow-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+
+  .flow-icon {
+    font-size: 24px;
+    margin-bottom: 4px;
+  }
+
+  .flow-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+  }
+
+  .flow-detail {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .flow-connector {
+    display: flex;
+    align-items: center;
+    padding: 0;
+    flex-shrink: 0;
+    width: 24px;
+  }
+
+  .flow-connector svg {
+    opacity: 0.3;
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-left {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .footer-props {
+    display: flex;
+    gap: 16px;
+  }
+
+  .footer-prop {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .footer-prop .dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+  }
+
+  .dot-green { background: var(--accent); }
+  .dot-blue { background: var(--blue); }
+  .dot-purple { background: var(--purple); }
+  .dot-orange { background: var(--orange); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>Momento <span class="version-badge">v0.9</span></h1>
+    <p>Deterministic State Recovery for AI Coding Agents</p>
+  </header>
+
+  <div class="arch-container">
+
+    <!-- INPUTS -->
+    <div class="layer">
+      <div class="section-label">Inputs — What goes in</div>
+      <div class="layer-content">
+        <div class="inputs-grid">
+          <div class="input-card manual">
+            <h3>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              Manual log_knowledge()
+              <span class="confidence-tag conf-high">0.9</span>
+            </h3>
+            <p>Developer or agent explicitly logs a gotcha, decision, pattern, or session checkpoint. Pass-through — no transformation.</p>
+          </div>
+          <div class="input-card auto">
+            <h3>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Compaction Summaries
+              <span class="confidence-tag conf-med">0.8</span>
+            </h3>
+            <p>Extracted from ~/.claude/ JSONL via <code style="font-family:'JetBrains Mono';font-size:11px;color:var(--orange)">momento ingest</code>. Filtered by keyword heuristic — only persists entries with decision/constraint/error language.</p>
+          </div>
+          <div class="input-card auto">
+            <h3>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              Error + Resolution Pairs
+              <span class="confidence-tag conf-med">0.7</span>
+            </h3>
+            <p>Pattern-matched from JSONL: <code style="font-family:'JetBrains Mono';font-size:11px;color:var(--orange)">is_error: true</code> followed by successful resolution. Stored as gotcha entries.</p>
+          </div>
+          <div class="input-card manual" style="border-style:dashed;opacity:0.5;">
+            <h3>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Future: Thinking Traces
+            </h3>
+            <p>Deferred to v0.5. Requires outcome validation guardrails to avoid preserving speculative or abandoned reasoning.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="flow-arrow">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text)" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+    </div>
+
+    <!-- STORE -->
+    <div class="layer">
+      <div class="section-label">Knowledge Store — Where it lives</div>
+      <div class="layer-content">
+        <div class="store-box">
+          <div class="store-main">
+            <h3>SQLite + FTS5</h3>
+            <div class="store-path">~/.momento/knowledge.db</div>
+            <div class="store-features">
+              <div class="store-feat">BM25 keyword search</div>
+              <div class="store-feat">Tag filtering</div>
+              <div class="store-feat">Exact-hash dedup</div>
+              <div class="store-feat">Single file</div>
+              <div class="store-feat">Zero dependencies</div>
+            </div>
+            <div class="properties">
+              <div class="prop-badge"><span class="dot"></span> Stateless</div>
+              <div class="prop-badge"><span class="dot"></span> Idempotent</div>
+              <div class="prop-badge"><span class="dot"></span> &lt;500ms retrieval</div>
+              <div class="prop-badge"><span class="dot"></span> Local-only</div>
+            </div>
+          </div>
+          <div class="store-tiers">
+            <div class="tier-card durable">
+              <h4>Durable Knowledge</h4>
+              <p>Cross-project, long-lived. Patterns, gotchas, architectural decisions.</p>
+              <div class="tier-types">
+                <span class="type-tag">gotcha</span>
+                <span class="type-tag">decision</span>
+                <span class="type-tag">pattern</span>
+                <span class="type-tag">plan</span>
+              </div>
+            </div>
+            <div class="tier-card session">
+              <h4>Session State <span style="font-weight:400;font-size:9px;opacity:0.6;text-transform:none;letter-spacing:0;">— decays automatically</span></h4>
+              <p>Project-scoped, short-lived. Task progress, current work, remaining steps. 48h restore window (SQL WHERE, not post-filter). 7d hard prune. Max 5 per 24h.</p>
+              <div class="tier-types">
+                <span class="type-tag">session_state</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="flow-arrow">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text)" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+    </div>
+
+    <!-- OUTPUTS -->
+    <div class="layer">
+      <div class="section-label">Interfaces — How it's accessed</div>
+      <div class="layer-content">
+        <div class="outputs-grid">
+          <div class="output-card mcp">
+            <h3>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+              MCP Server
+            </h3>
+            <ul class="tool-list">
+              <li class="tool-item">
+                <div class="tool-name">retrieve_context()</div>
+                <div class="tool-desc">Returns compressed directives. 2000 token cap enforced by accumulating entries in priority order — never truncates mid-entry.</div>
+                <div class="tool-modes">
+                  <span class="mode-tag mode-restore">RESTORE — 5-tier, surface+branch-aware</span>
+                  <span class="mode-tag mode-search">SEARCH — FTS5 ranked</span>
+                </div>
+              </li>
+              <li class="tool-item">
+                <div class="tool-name">log_knowledge()</div>
+                <div class="tool-desc">Store entry directly. No transformation. Types: gotcha, decision, plan, pattern, session_state. Use decision/plan for Historical Slices with rationale.</div>
+              </li>
+            </ul>
+          </div>
+          <div class="output-card cli">
+            <h3>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              CLI
+            </h3>
+            <ul class="tool-list">
+              <li class="tool-item">
+                <div class="tool-name">momento log</div>
+                <div class="tool-desc">Log knowledge entry from terminal</div>
+              </li>
+              <li class="tool-item">
+                <div class="tool-name">momento inspect</div>
+                <div class="tool-desc">Browse, filter, view entries</div>
+              </li>
+              <li class="tool-item">
+                <div class="tool-name">momento prune</div>
+                <div class="tool-desc">Delete entries, clean old session state</div>
+              </li>
+              <li class="tool-item">
+                <div class="tool-name">momento ingest</div>
+                <div class="tool-desc">Batch extract from ~/.claude/ logs</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Project identity + triggers -->
+  <div class="project-section">
+    <div class="section-label" style="margin-bottom:16px">Supporting Systems</div>
+    <div class="project-grid">
+      <div class="project-box">
+        <h3>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"/></svg>
+          Project Identity (Auto-Resolved)
+        </h3>
+        <div class="resolution-step">
+          <span class="step-num">1</span>
+          <span class="step-text"><code>hash(git remote.origin.url)</code> — survives folder moves, works across machines</span>
+        </div>
+        <div class="resolution-step">
+          <span class="step-num">2</span>
+          <span class="step-text"><code>hash(git rev-parse --show-toplevel)</code> — fallback for local-only repos</span>
+        </div>
+        <div class="resolution-step">
+          <span class="step-num">3</span>
+          <span class="step-text"><code>hash(absolute path)</code> — fallback when no git repo</span>
+        </div>
+      </div>
+      <div class="trigger-box">
+        <h3>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          CLAUDE.md Trigger Rules
+        </h3>
+        <div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;font-family:'JetBrains Mono',monospace;">Cadence-based — not threshold-based. Model can't measure context %.</div>
+        <div class="trigger-list">
+          <div class="trigger-item">
+            <span class="trigger-when" style="background:var(--accent-dim);color:var(--accent);">after subtask</span>
+            <span class="trigger-action">→ <code>log_knowledge(session_state)</code></span>
+          </div>
+          <div class="trigger-item">
+            <span class="trigger-when">after /clear</span>
+            <span class="trigger-action">→ <code>retrieve_context()</code></span>
+          </div>
+          <div class="trigger-item">
+            <span class="trigger-when">session start</span>
+            <span class="trigger-action">→ <code>retrieve_context()</code></span>
+          </div>
+          <div class="trigger-item">
+            <span class="trigger-when">"checkpoint"</span>
+            <span class="trigger-action">→ <code>log_knowledge(session_state)</code></span>
+          </div>
+          <div class="trigger-item">
+            <span class="trigger-when" style="background:var(--red-dim);color:var(--red);">before /compact</span>
+            <span class="trigger-action">→ <code>log_knowledge(session_state)</code></span>
+          </div>
+          <div class="trigger-item">
+            <span class="trigger-when">unfamiliar error</span>
+            <span class="trigger-action">→ <code>retrieve_context(query=...)</code></span>
+          </div>
+          <div class="trigger-item">
+            <span class="trigger-when">decision finalized</span>
+            <span class="trigger-action">→ <code>log_knowledge(decision/plan)</code></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Agent Adapter Layer -->
+  <div class="project-section">
+    <div class="section-label" style="margin-bottom:16px">Agent Adapter Layer — Same core, different trigger wiring</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px;max-width:700px;">Momento's MCP surface is agent-agnostic. Adapters are thin instruction blocks that tell each agent <em>when</em> to call tools — not <em>how</em> they behave. No code changes. No schema changes. No new tools.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <!-- Claude Code Adapter -->
+      <div class="project-box" style="border-color:var(--accent-dim);">
+        <h3 style="color:var(--accent);display:flex;align-items:center;gap:8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          Claude Code
+          <span style="font-family:'JetBrains Mono',monospace;font-size:9px;background:var(--accent-dim);color:var(--accent);padding:2px 6px;border-radius:3px;">CLAUDE.md</span>
+        </h3>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Lifecycle-driven + cadence. Has <code style="font-family:'JetBrains Mono';font-size:10px;color:var(--accent);">/clear</code>, <code style="font-family:'JetBrains Mono';font-size:10px;color:var(--accent);">/compact</code>, auto-compaction.</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 6px;border-radius:3px;background:var(--accent-dim);color:var(--accent);white-space:nowrap;">save</span>
+            <span style="font-size:10px;color:var(--text-muted);">After subtask · before /compact · "checkpoint"</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 6px;border-radius:3px;background:var(--blue-dim);color:var(--blue);white-space:nowrap;">restore</span>
+            <span style="font-size:10px;color:var(--text-muted);">After /clear · session start · unfamiliar error</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 6px;border-radius:3px;background:var(--purple-dim);color:var(--purple);white-space:nowrap;">record</span>
+            <span style="font-size:10px;color:var(--text-muted);">Decision finalized · plan committed</span>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:10px;color:var(--text-muted);">
+          <strong style="color:var(--accent);">Also:</strong> <code style="font-family:'JetBrains Mono';font-size:10px;">momento ingest</code> for batch JSONL extraction
+        </div>
+      </div>
+      <!-- Codex Adapter -->
+      <div class="project-box" style="border-color:var(--orange-dim);">
+        <h3 style="color:var(--orange);display:flex;align-items:center;gap:8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          Codex 5.3
+          <span style="font-family:'JetBrains Mono',monospace;font-size:9px;background:var(--orange-dim);color:var(--orange);padding:2px 6px;border-radius:3px;">.codex_instructions.md</span>
+        </h3>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Completion-driven cadence. ~400K context. No /clear or /compact.</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 6px;border-radius:3px;background:var(--orange-dim);color:var(--orange);white-space:nowrap;">save</span>
+            <span style="font-size:10px;color:var(--text-muted);">After subtask · after error fix · before session end</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 6px;border-radius:3px;background:var(--blue-dim);color:var(--blue);white-space:nowrap;">restore</span>
+            <span style="font-size:10px;color:var(--text-muted);">Session start · after resume · unfamiliar error</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 6px;border-radius:3px;background:var(--purple-dim);color:var(--purple);white-space:nowrap;">record</span>
+            <span style="font-size:10px;color:var(--text-muted);">Decision finalized · plan committed</span>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:10px;color:var(--text-muted);">
+          <strong style="color:var(--orange);">Note:</strong> <code style="font-family:'JetBrains Mono';font-size:10px;">codex resume</code> = raw history. <code style="font-family:'JetBrains Mono';font-size:10px;">retrieve_context</code> = distilled intent. Use both.
+        </div>
+      </div>
+    </div>
+    <!-- Future adapters row -->
+    <div style="display:flex;gap:12px;margin-top:12px;">
+      <div style="flex:1;border:1px dashed var(--border);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px;opacity:0.5;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text-muted);">Cursor</span>
+        <span style="font-size:10px;color:var(--text-muted);">Pure cadence · v0.3</span>
+      </div>
+      <div style="flex:1;border:1px dashed var(--border);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px;opacity:0.5;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text-muted);">Aider</span>
+        <span style="font-size:10px;color:var(--text-muted);">Session-oriented · v0.3</span>
+      </div>
+      <div style="flex:1;border:1px dashed var(--border);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px;opacity:0.5;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text-muted);">Windsurf</span>
+        <span style="font-size:10px;color:var(--text-muted);">TBD · v0.3+</span>
+      </div>
+    </div>
+    <!-- The principle -->
+    <div style="margin-top:16px;padding:14px 18px;border-left:3px solid var(--accent);border-top:1px solid var(--accent-dim);background:rgba(110,231,183,0.05);border-radius:0 6px 6px 0;">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;display:block;margin-bottom:4px;">Core Invariant</span>
+      <span style="font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);font-weight:500;">Agents decide <em>when</em> to call. Momento decides <em>what</em> to return.</span>
+    </div>
+  </div>
+
+  <!-- Historical Slices + Restore Ordering -->
+  <div class="project-section">
+    <div class="section-label" style="margin-bottom:16px">Decision Context Preservation</div>
+    <div class="project-grid">
+      <div class="project-box" style="border-color: var(--purple-dim);">
+        <h3 style="color: var(--purple);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Historical Slice Structure
+        </h3>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);line-height:1.8;background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;padding:12px;margin-top:8px;">
+          <div><span style="color:var(--purple);font-weight:600;">Decision:</span> <span style="color:var(--text-muted);">&lt;What was chosen&gt;</span></div>
+          <div style="margin-top:6px;"><span style="color:var(--accent);font-weight:600;">Rationale:</span></div>
+          <div style="padding-left:12px;color:var(--text-muted);">- Why it was chosen</div>
+          <div style="padding-left:12px;color:var(--text-muted);">- Key tradeoffs</div>
+          <div style="padding-left:12px;color:var(--text-muted);">- Constraints discovered</div>
+          <div style="margin-top:6px;"><span style="color:var(--red);font-weight:600;">Rejected:</span></div>
+          <div style="padding-left:12px;color:var(--text-muted);">- Alternative 1 and why not</div>
+          <div style="padding-left:12px;color:var(--text-muted);">- Alternative 2 and why not</div>
+          <div style="margin-top:6px;"><span style="color:var(--orange);font-weight:600;">Implications:</span></div>
+          <div style="padding-left:12px;color:var(--text-muted);">- Architectural consequences</div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">
+          <span class="type-tag" style="border-color:var(--purple-dim);color:var(--purple);">decision</span>
+          <span class="type-tag" style="border-color:var(--purple-dim);color:var(--purple);">plan</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-muted);padding:2px 0;">— developer-confirmed only</span>
+        </div>
+      </div>
+      <div class="project-box" style="border-color: var(--blue-dim);">
+        <h3 style="color: var(--blue);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          Restore Mode — 5-Tier Ordering
+        </h3>
+        <div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;font-family:'JetBrains Mono',monospace;">Surface+branch-aware: prefers entries matching cwd surface and current git branch. Preference, not filter. Surface > branch in sort priority.</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--bg);background:var(--orange);width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--orange);">session_state</span>
+            <span style="font-size:10px;color:var(--text-muted);">— surface-matching, up to 4</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--bg);background:var(--orange);width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;opacity:0.7;">1</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--orange);opacity:0.7;">session_state</span>
+            <span style="font-size:10px;color:var(--text-muted);">— other surfaces, up to 2</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--bg);background:var(--purple);width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--purple);">plan</span>
+            <span style="font-size:10px;color:var(--text-muted);">— finalized plans, up to 2</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--bg);background:var(--purple);width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">3</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--purple);">decision</span>
+            <span style="font-size:10px;color:var(--text-muted);">— high confidence, up to 3</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--bg);background:var(--accent);width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">4</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);">gotcha</span>
+            <span style="font-size:10px;color:var(--text-muted);"> + </span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);">pattern</span>
+            <span style="font-size:10px;color:var(--text-muted);">— up to 4 combined</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--bg);background:var(--text-muted);width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">5</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);">cross-project</span>
+            <span style="font-size:10px;color:var(--text-muted);">— matching tags, up to 2</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- The core flow -->
+  <div class="flow-section">
+    <h2>The Core Flow — Restore After /clear</h2>
+    <div class="flow-timeline">
+      <div class="flow-step">
+        <div class="flow-step-inner">
+          <div class="flow-num">01</div>
+          <div class="flow-icon">⌨️</div>
+          <div class="flow-title">Work</div>
+          <div class="flow-detail">Developer + agent collaborate on implementation</div>
+        </div>
+      </div>
+      <div class="flow-connector"><svg width="24" height="12" viewBox="0 0 24 12"><line x1="0" y1="6" x2="24" y2="6" stroke="var(--text)" stroke-width="1.5"/><polyline points="18,1 24,6 18,11" fill="none" stroke="var(--text)" stroke-width="1.5"/></svg></div>
+      <div class="flow-step">
+        <div class="flow-step-inner highlight">
+          <div class="flow-num">02</div>
+          <div class="flow-icon">💾</div>
+          <div class="flow-title">Cadence saves</div>
+          <div class="flow-detail">Agent checkpoints after each subtask automatically</div>
+        </div>
+      </div>
+      <div class="flow-connector"><svg width="24" height="12" viewBox="0 0 24 12"><line x1="0" y1="6" x2="24" y2="6" stroke="var(--text)" stroke-width="1.5"/><polyline points="18,1 24,6 18,11" fill="none" stroke="var(--text)" stroke-width="1.5"/></svg></div>
+      <div class="flow-step">
+        <div class="flow-step-inner danger">
+          <div class="flow-num">03</div>
+          <div class="flow-icon">💥</div>
+          <div class="flow-title">/clear</div>
+          <div class="flow-detail">Context lost. Session blank.</div>
+        </div>
+      </div>
+      <div class="flow-connector"><svg width="24" height="12" viewBox="0 0 24 12"><line x1="0" y1="6" x2="24" y2="6" stroke="var(--text)" stroke-width="1.5"/><polyline points="18,1 24,6 18,11" fill="none" stroke="var(--text)" stroke-width="1.5"/></svg></div>
+      <div class="flow-step">
+        <div class="flow-step-inner highlight">
+          <div class="flow-num">04</div>
+          <div class="flow-icon">🔍</div>
+          <div class="flow-title">retrieve_context()</div>
+          <div class="flow-detail">Auto-triggered by CLAUDE.md instruction</div>
+        </div>
+      </div>
+      <div class="flow-connector"><svg width="24" height="12" viewBox="0 0 24 12"><line x1="0" y1="6" x2="24" y2="6" stroke="var(--text)" stroke-width="1.5"/><polyline points="18,1 24,6 18,11" fill="none" stroke="var(--text)" stroke-width="1.5"/></svg></div>
+      <div class="flow-step">
+        <div class="flow-step-inner highlight">
+          <div class="flow-num">05</div>
+          <div class="flow-icon">✅</div>
+          <div class="flow-title">Resume</div>
+          <div class="flow-detail">Agent oriented. Developer didn't re-explain.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-left">Agents decide <em>when</em> to call. Momento decides <em>what</em> to return.</div>
+    <div class="footer-props">
+      <div class="footer-prop"><span class="dot dot-green"></span> 2 MCP tools</div>
+      <div class="footer-prop"><span class="dot dot-blue"></span> SQLite + FTS5</div>
+      <div class="footer-prop"><span class="dot dot-purple"></span> Historical Slices</div>
+      <div class="footer-prop"><span class="dot dot-orange"></span> 5-tier restore</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
