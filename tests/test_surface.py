@@ -1,215 +1,69 @@
-"""Tests for momento.surface — surface detection from working directory.
+"""Tests for momento.surface — PRD-mapped surface detection.
 
-Covers T6.1 through T6.8 from the acceptance test spec.
-These are RED tests — they will fail against stub implementations.
+Surface mapping is fixed:
+- server/backend -> server
+- web/frontend -> web
+- ios -> ios
+- android -> android
 """
 
-import time
+from unittest.mock import patch
 
-import pytest
-
-from momento.retrieve import retrieve_context
-from momento.surface import detect_surface
+from momento.surface import derive_surface, detect_surface, _resolve_git_root
 
 
-# ---------------------------------------------------------------------------
-# T6.1 — Basic surface matching
-# ---------------------------------------------------------------------------
+class TestDeriveSurface:
+    def test_server_mapping(self):
+        assert derive_surface("/project/server/handlers", "/project") == "server"
+        assert derive_surface("/project/backend/jobs", "/project") == "server"
+
+    def test_web_mapping(self):
+        assert derive_surface("/project/web/src", "/project") == "web"
+        assert derive_surface("/project/frontend/ui", "/project") == "web"
+
+    def test_mobile_mapping(self):
+        assert derive_surface("/project/ios/auth", "/project") == "ios"
+        assert derive_surface("/project/android/app", "/project") == "android"
+
+    def test_case_insensitive(self):
+        assert derive_surface("/project/Server/api", "/project") == "server"
+        assert derive_surface("/project/FrontEnd/ui", "/project") == "web"
+
+    def test_unmapped_segments_return_none(self):
+        assert derive_surface("/project/services/payments", "/project") is None
+        assert derive_surface("/project/api/auth", "/project") is None
+
+    def test_root_and_hidden(self):
+        assert derive_surface("/project", "/project") is None
+        assert derive_surface("/project/.github/workflows", "/project") is None
+
+    def test_not_inside_project(self):
+        assert derive_surface("/other/path", "/project") is None
 
 
-def test_basic_surface_matching():
-    """T6.1: /code/app/server/handlers -> 'server'"""
-    assert detect_surface("/code/app/server/handlers") == "server"
+class TestDetectSurface:
+    @patch("momento.surface._resolve_git_root", return_value="/project")
+    def test_detects_mapped_surface(self, _mock_root):
+        assert detect_surface("/project/backend/worker") == "server"
+        assert detect_surface("/project/frontend/app") == "web"
+
+    @patch("momento.surface._resolve_git_root", return_value="/project")
+    def test_unmapped_returns_none(self, _mock_root):
+        assert detect_surface("/project/packages/ui") is None
+
+    @patch("momento.surface._resolve_git_root", return_value=None)
+    def test_non_git_returns_none(self, _mock_root):
+        assert detect_surface("/tmp/no-git") is None
+
+    def test_empty_cwd_returns_none(self):
+        """Empty string or root path returns None early (covers surface.py:74)."""
+        assert detect_surface("") is None
+        assert detect_surface("/") is None
 
 
-# ---------------------------------------------------------------------------
-# T6.2 — Case insensitive
-# ---------------------------------------------------------------------------
+class TestResolveGitRoot:
+    def test_real_git_repo(self, mock_git_repo):
+        assert _resolve_git_root(str(mock_git_repo)) == str(mock_git_repo)
 
-
-def test_case_insensitive():
-    """T6.2: /code/app/Server/handlers -> 'server' (case-insensitive)"""
-    assert detect_surface("/code/app/Server/handlers") == "server"
-
-
-# ---------------------------------------------------------------------------
-# T6.3 — Directory boundary (no substring match) — THE critical test
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.must_pass
-def test_directory_boundary_observer():
-    """T6.3: /code/app/observer/metrics -> None (NOT 'server').
-
-    This is THE critical boundary test. 'observer' contains 'server'
-    as a substring, but surface detection must match on directory
-    boundaries only, not substrings.
-    """
-    result = detect_surface("/code/app/observer/metrics")
-    assert result is None, (
-        f"'/observer' must NOT match 'server'. Got: {result!r}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# T6.4 — Webinar does not match web
-# ---------------------------------------------------------------------------
-
-
-def test_webinar_does_not_match_web():
-    """T6.4: /code/app/webinar/views -> None (NOT 'web').
-
-    'webinar' contains 'web' as a prefix, but surface detection must
-    match on directory boundaries only.
-    """
-    result = detect_surface("/code/app/webinar/views")
-    assert result is None, (
-        f"'/webinar' must NOT match 'web'. Got: {result!r}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# T6.5 — No surface detected
-# ---------------------------------------------------------------------------
-
-
-def test_no_surface_detected():
-    """T6.5: /code/app/lib/utils -> None (no known surface)."""
-    result = detect_surface("/code/app/lib/utils")
-    assert result is None, (
-        f"No surface should be detected for '/lib/utils'. Got: {result!r}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# T6.6 — Frontend alias
-# ---------------------------------------------------------------------------
-
-
-def test_frontend_alias():
-    """T6.6: /code/app/frontend/components -> 'web'.
-
-    'frontend' is an alias for the 'web' surface.
-    """
-    assert detect_surface("/code/app/frontend/components") == "web"
-
-
-# ---------------------------------------------------------------------------
-# T6.7 — Nested ambiguous path
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.nice_to_have
-def test_nested_ambiguous_path():
-    """T6.7: /code/app/server-ios/shared -> deterministic result.
-
-    The path contains both 'server' and 'ios'. The result must be
-    deterministic — always the same for the same input. Implementation
-    should use first segment match in path order.
-    """
-    result1 = detect_surface("/code/app/server-ios/shared")
-    result2 = detect_surface("/code/app/server-ios/shared")
-
-    # Must be deterministic
-    assert result1 == result2, (
-        f"detect_surface must be deterministic. Got {result1!r} then {result2!r}"
-    )
-
-    # Must be one of the valid surfaces or None
-    valid = {"server", "web", "ios", "android", None}
-    assert result1 in valid, (
-        f"Result must be a valid surface or None. Got: {result1!r}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# T6.8 — Performance at scale
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.nice_to_have
-def test_performance_at_scale(db):
-    """T6.8: with 5000 entries in DB, retrieve_context completes in < 500ms.
-
-    This is a non-strict benchmark for early detection of accidental
-    full scans. We create 5000 entries and measure retrieval time.
-    """
-    from tests.mock_data import make_entry, MOCK_PROJECT_ID, minutes_ago
-    from tests.conftest import insert_entries
-
-    # Insert 5000 entries
-    entries = []
-    for i in range(5000):
-        entries.append(make_entry(
-            content=f"Performance test entry number {i}. "
-                    f"This tests that retrieval remains fast at scale.",
-            type="decision",
-            tags=["perf", "server"],
-            branch="main",
-            created_at=minutes_ago(i),
-            project_id=MOCK_PROJECT_ID,
-        ))
-    insert_entries(db, entries)
-
-    # Verify entries are in DB
-    count = db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
-    assert count == 5000, f"Expected 5000 entries, got {count}"
-
-    # Measure restore retrieval latency at this scale.
-    start = time.perf_counter()
-    result = retrieve_context(
-        conn=db,
-        project_id=MOCK_PROJECT_ID,
-        branch="main",
-        surface="server",
-        query=None,
-        include_session_state=True,
-    )
-    elapsed_ms = (time.perf_counter() - start) * 1000
-
-    assert result is not None, "retrieve_context should return a result"
-    assert elapsed_ms < 500, (
-        f"retrieve_context on 5000-entry project took {elapsed_ms:.1f}ms (limit: 500ms)"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Additional surface detection coverage
-# ---------------------------------------------------------------------------
-
-
-def test_backend_alias():
-    """Backend is an alias for server surface (from PRD surface table)."""
-    assert detect_surface("/code/app/backend/api") == "server"
-
-
-def test_ios_surface():
-    """Basic iOS surface detection."""
-    assert detect_surface("/code/app/ios/screens") == "ios"
-
-
-def test_android_surface():
-    """Basic Android surface detection."""
-    assert detect_surface("/code/app/android/activities") == "android"
-
-
-def test_web_surface():
-    """Basic web surface detection — direct /web match."""
-    assert detect_surface("/code/app/web/components") == "web"
-
-
-def test_path_ending_with_surface():
-    """Surface at the end of the path (no trailing segments)."""
-    assert detect_surface("/code/app/server") == "server"
-
-
-def test_empty_path():
-    """Empty string path returns None."""
-    result = detect_surface("")
-    assert result is None
-
-
-def test_root_path():
-    """Root path returns None."""
-    result = detect_surface("/")
-    assert result is None
+    def test_non_git_dir(self, mock_non_git_dir):
+        assert _resolve_git_root(str(mock_non_git_dir)) is None

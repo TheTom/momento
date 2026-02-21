@@ -1,11 +1,13 @@
 """Knowledge retrieval — the read path."""
 
 import json
+import os
+import re
 import sqlite3
 from datetime import datetime, timezone, timedelta
 
 from momento.models import Entry, RestoreResult
-from momento.tokens import estimate_tokens
+from momento.tokens import estimate_tokens, format_age
 
 
 # Tier quotas
@@ -14,10 +16,11 @@ _SESSION_OTHER_QUOTA = 2
 _PLAN_QUOTA = 2
 _DECISION_QUOTA = 3
 _GOTCHA_PATTERN_QUOTA = 4
-_CROSS_PROJECT_QUOTA = 1
+_CROSS_PROJECT_QUOTA = 2
 
 _TOKEN_BUDGET = 2000
 _SEARCH_MAX_RESULTS = 10
+_DEFAULT_SESSION_WINDOW_HOURS = 48
 
 _SELECT_COLS = (
     "id, content, content_hash, type, tags, project_id, "
@@ -38,7 +41,14 @@ def _render_entry(entry: Entry) -> str:
     """Render a single entry as markdown."""
     tags = json.loads(entry.tags) if isinstance(entry.tags, str) else entry.tags
     tag_str = ", ".join(tags) if tags else ""
-    meta = f"[{entry.type} | {tag_str} | {entry.branch}]" if entry.branch else f"[{entry.type} | {tag_str}]"
+    age = _format_age(entry.created_at)
+    meta_parts = [entry.type]
+    if tag_str:
+        meta_parts.append(tag_str)
+    if entry.branch:
+        meta_parts.append(entry.branch)
+    meta_parts.append(age)
+    meta = f"[{' | '.join(meta_parts)}]"
     return f"{meta}\n{entry.content}\n"
 
 
@@ -49,14 +59,23 @@ def _tag_set(tags) -> set[str]:
     return set(tags)
 
 
-def _sort_entries(entries: list[Entry], surface: str | None, branch: str | None) -> list[Entry]:
-    """Sort: surface_match DESC, branch_match DESC, created_at DESC, id ASC.
+def _sort_entries(
+    entries: list[Entry],
+    surface: str | None,
+    branch: str | None,
+    use_confidence: bool = False,
+) -> list[Entry]:
+    """Sort: surface_match DESC, branch_match DESC, [confidence DESC], created_at DESC, id ASC.
 
     Uses stable multi-pass sort (Python's sort is stable).
+    When use_confidence=True, confidence is inserted between branch_match and created_at
+    (used for Tier 3 decisions per PRD).
     """
     entries = list(entries)
     entries.sort(key=lambda e: e.id)  # id ASC (final tiebreaker)
     entries.sort(key=lambda e: e.created_at or "", reverse=True)  # created_at DESC
+    if use_confidence:
+        entries.sort(key=lambda e: e.confidence, reverse=True)  # confidence DESC
     entries.sort(key=lambda e: -(1 if (branch and e.branch == branch) else 0))  # branch match DESC
     entries.sort(key=lambda e: -(1 if (surface and surface in _tag_set(e.tags)) else 0))  # surface match DESC
     return entries
@@ -79,35 +98,44 @@ def _render_restore(entries: list[Entry], project_id: str) -> str:
     """Render full restore markdown output."""
     if not entries:
         return (
-            "## Momento — Project Context\n\n"
+            "## Active Task\n"
             "No session checkpoints found for this project.\n\n"
-            "**Tip:** Use `log_knowledge` to save decisions, gotchas, "
-            "and session state as you work.\n"
+            "## Project Knowledge\n"
+            "No stored knowledge entries found.\n\n"
+            "Tip: Use log_knowledge(type=\"session_state\") to save progress "
+            "before /compact or /clear.\n"
         )
 
-    sections: list[str] = []
-    current_type = None
-    type_headers = {
-        "session_state": "## Active Task",
-        "plan": "## Plans",
-        "decision": "## Decisions",
-        "gotcha": "## Gotchas",
-        "pattern": "## Patterns",
-    }
-    cross_header_added = False
+    session_entries: list[Entry] = []
+    project_entries: list[Entry] = []
+    cross_entries: list[Entry] = []
 
     for entry in entries:
         if entry.project_id != project_id and entry.project_id is not None:
-            if not cross_header_added:
-                sections.append("\n## Cross-Project\n")
-                cross_header_added = True
-            sections.append(_render_entry(entry))
-            continue
+            cross_entries.append(entry)
+        elif entry.type == "session_state":
+            session_entries.append(entry)
+        else:
+            project_entries.append(entry)
 
-        if entry.type != current_type:
-            sections.append(f"\n{type_headers.get(entry.type, '## ' + entry.type)}\n")
-            current_type = entry.type
-        sections.append(_render_entry(entry))
+    sections = ["## Active Task\n"]
+    if session_entries:
+        for entry in session_entries:
+            sections.append(_render_entry(entry))
+    else:
+        sections.append("No session checkpoints found for this project.\n")
+
+    sections.append("\n## Project Knowledge\n")
+    if project_entries:
+        for entry in project_entries:
+            sections.append(_render_entry(entry))
+    else:
+        sections.append("No stored knowledge entries found.\n")
+
+    if cross_entries:
+        sections.append("\n## Cross-Project\n")
+        for entry in cross_entries:
+            sections.append(_render_entry(entry))
 
     return "".join(sections).strip() + "\n"
 
@@ -132,10 +160,13 @@ def _restore_mode(
     """Deterministic 5-tier state reconstruction."""
     all_entries: list[Entry] = []
     budget_used = 0
+    budget_exhausted = False
 
     # --- Tier 1: session_state (48h window) ---
     if include_session_state:
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(hours=_get_session_window_hours())
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
         rows = conn.execute(
             f"SELECT {_SELECT_COLS} FROM knowledge "
             "WHERE project_id = ? AND type = 'session_state' AND created_at >= ? ",
@@ -150,9 +181,11 @@ def _restore_mode(
         filled, cost = _greedy_fill(tier1, _TOKEN_BUDGET - budget_used)
         all_entries.extend(filled)
         budget_used += cost
+        if tier1 and len(filled) < len(tier1):
+            budget_exhausted = True
 
     # --- Tier 2: plan ---
-    if budget_used < _TOKEN_BUDGET:
+    if budget_used < _TOKEN_BUDGET and not budget_exhausted:
         rows = conn.execute(
             f"SELECT {_SELECT_COLS} FROM knowledge "
             "WHERE project_id = ? AND type = 'plan' ",
@@ -162,21 +195,27 @@ def _restore_mode(
         filled, cost = _greedy_fill(candidates, _TOKEN_BUDGET - budget_used)
         all_entries.extend(filled)
         budget_used += cost
+        if candidates and len(filled) < len(candidates):
+            budget_exhausted = True
 
-    # --- Tier 3: decision ---
-    if budget_used < _TOKEN_BUDGET:
+    # --- Tier 3: decision (sorted by confidence per PRD) ---
+    if budget_used < _TOKEN_BUDGET and not budget_exhausted:
         rows = conn.execute(
             f"SELECT {_SELECT_COLS} FROM knowledge "
             "WHERE project_id = ? AND type = 'decision' ",
             (project_id,),
         ).fetchall()
-        candidates = _sort_entries([_row_to_entry(r) for r in rows], surface, branch)[:_DECISION_QUOTA]
+        candidates = _sort_entries(
+            [_row_to_entry(r) for r in rows], surface, branch, use_confidence=True,
+        )[:_DECISION_QUOTA]
         filled, cost = _greedy_fill(candidates, _TOKEN_BUDGET - budget_used)
         all_entries.extend(filled)
         budget_used += cost
+        if candidates and len(filled) < len(candidates):
+            budget_exhausted = True
 
     # --- Tier 4: gotcha + pattern (combined quota) ---
-    if budget_used < _TOKEN_BUDGET:
+    if budget_used < _TOKEN_BUDGET and not budget_exhausted:
         rows = conn.execute(
             f"SELECT {_SELECT_COLS} FROM knowledge "
             "WHERE project_id = ? AND type IN ('gotcha', 'pattern') ",
@@ -186,9 +225,11 @@ def _restore_mode(
         filled, cost = _greedy_fill(candidates, _TOKEN_BUDGET - budget_used)
         all_entries.extend(filled)
         budget_used += cost
+        if candidates and len(filled) < len(candidates):
+            budget_exhausted = True
 
     # --- Tier 5: cross-project (tag overlap required, respects type quotas) ---
-    if budget_used < _TOKEN_BUDGET:
+    if budget_used < _TOKEN_BUDGET and not budget_exhausted:
         tag_rows = conn.execute(
             "SELECT tags FROM knowledge WHERE project_id = ?", (project_id,),
         ).fetchall()
@@ -264,7 +305,7 @@ def _search_mode(
     project_id: str,
     query: str,
 ) -> RestoreResult:
-    """FTS5 keyword search ranked by relevance."""
+    """FTS5 keyword search ranked by relevance, scoped to project."""
     select_cols = (
         "k.id, k.content, k.content_hash, k.type, k.tags, k.project_id, "
         "k.project_name, k.branch, k.source_type, k.confidence, k.created_at, k.updated_at"
@@ -272,13 +313,18 @@ def _search_mode(
     rows = conn.execute(
         f"SELECT {select_cols} FROM knowledge_fts f "
         "JOIN knowledge k ON k.rowid = f.rowid "
-        "WHERE knowledge_fts MATCH ? ORDER BY rank",
-        (query,),
+        "WHERE knowledge_fts MATCH ? "
+        "AND (k.project_id = ? OR k.project_id IS NULL) "
+        "ORDER BY rank",
+        (query, project_id),
     ).fetchall()
 
     selected = []
     budget_used = 0
+    terms = _extract_query_terms(query)
     for entry in (_row_to_entry(r) for r in rows):
+        if not _passes_relevance_threshold(entry, terms):
+            continue
         if len(selected) >= _SEARCH_MAX_RESULTS:
             break
         cost = estimate_tokens(_render_entry(entry))
@@ -319,3 +365,35 @@ def retrieve_context(
     if query:
         return _search_mode(conn, project_id, query)
     return _restore_mode(conn, project_id, branch, surface, include_session_state)
+
+
+_format_age = format_age  # Backward compat alias for internal callers
+
+
+def _get_session_window_hours() -> int:
+    """Session-state restore window in hours, configurable by env var."""
+    raw = os.environ.get("MOMENTO_SESSION_WINDOW_HOURS")
+    if raw is None:
+        return _DEFAULT_SESSION_WINDOW_HOURS
+    try:
+        hours = int(raw)
+    except ValueError:
+        return _DEFAULT_SESSION_WINDOW_HOURS
+    return hours if hours > 0 else _DEFAULT_SESSION_WINDOW_HOURS
+
+
+def _extract_query_terms(query: str) -> list[str]:
+    """Extract keyword terms while ignoring FTS boolean operators."""
+    terms = re.findall(r"[A-Za-z0-9_]+", query.lower())
+    return [t for t in terms if t not in {"and", "or", "not"}]
+
+
+def _passes_relevance_threshold(entry: Entry, query_terms: list[str]) -> bool:
+    """Suppress weak matches in search mode using token overlap."""
+    if not query_terms:
+        return True
+    tags = json.loads(entry.tags) if isinstance(entry.tags, str) else entry.tags
+    haystack = f"{entry.content} {' '.join(tags)}".lower()
+    matched = sum(1 for t in query_terms if t in haystack)
+    required = 1 if len(query_terms) <= 2 else max(2, len(query_terms) // 2)
+    return matched >= required

@@ -86,7 +86,7 @@ def log_knowledge(
         ).fetchone()
         if existing:
             return {"id": existing[0], "status": "duplicate_skipped"}
-        return {"status": "duplicate_skipped"}
+        return {"error": "Integrity constraint violation during insert."}
     except sqlite3.OperationalError as exc:
         conn.rollback()
         return {"error": str(exc)}

@@ -242,3 +242,130 @@ def test_search_mode_no_restore_ranking(db):
     assert any("actor isolation" in c for c in contents), (
         "iOS auth entry must appear in search (not filtered by surface)"
     )
+
+
+def test_search_includes_cross_project_results(db):
+    """Search mode includes current project + global cross-project entries."""
+    entries = [
+        make_entry(
+            content="Webhook signature verification for Stripe events.",
+            type="gotcha",
+            tags=["billing", "webhook"],
+            branch="main",
+            project_id=MOCK_PROJECT_ID,
+        ),
+        make_entry(
+            content="Webhook replay attack mitigation with idempotency keys.",
+            type="gotcha",
+            tags=["billing", "webhook"],
+            branch="main",
+            project_id=None,
+            project_name=None,
+        ),
+        make_entry(
+            content="Unrelated project-specific webhook note.",
+            type="gotcha",
+            tags=["billing", "webhook"],
+            branch="main",
+            project_id="other-project",
+            project_name="identity-service",
+        ),
+    ]
+    insert_entries(db, entries)
+
+    result = retrieve_context(
+        conn=db,
+        query="webhook replay",
+        project_id=MOCK_PROJECT_ID,
+    )
+
+    assert any(e.project_id is None for e in result.entries), (
+        "Search should include global cross-project hits"
+    )
+    assert not any(e.project_id == "other-project" for e in result.entries), (
+        "Search should stay scoped to current project + global entries"
+    )
+
+
+def test_relevance_threshold_filters_weak_matches(db):
+    """Entries with insufficient keyword overlap are filtered (covers retrieve.py:325).
+
+    FTS5 implicit AND means multi-word queries only return entries with ALL terms,
+    making threshold filtering impossible. Using FTS5 OR syntax forces FTS5 to
+    return entries matching ANY term, then the Python threshold filters weak ones.
+
+    Query: "xylophone OR kazoo OR marimba" -> terms ["xylophone", "kazoo", "marimba"].
+    Required overlap = max(2, 3//2) = 2.
+    Entry with only "xylophone": 1 match < 2 -> filtered.
+    """
+    entries = [
+        # Strong match — contains both distinctive terms
+        make_entry(
+            content="The xylophone and kazoo ensemble played at the venue.",
+            type="gotcha",
+            tags=["music"],
+            branch="main",
+            project_id=MOCK_PROJECT_ID,
+        ),
+        # Weak match — FTS5 OR returns it, but only 1/3 query terms match
+        make_entry(
+            content="A xylophone instrument is made with metal bars.",
+            type="decision",
+            tags=["instruments"],
+            branch="main",
+            project_id=MOCK_PROJECT_ID,
+        ),
+    ]
+    insert_entries(db, entries)
+
+    # FTS5 OR: returns entries with any of these terms.
+    # Python threshold requires >=2 matched terms.
+    result = retrieve_context(
+        conn=db,
+        query="xylophone OR kazoo OR marimba",
+        project_id=MOCK_PROJECT_ID,
+    )
+
+    contents = [e.content for e in result.entries]
+    # Strong match (2+ terms) passes threshold
+    assert any("ensemble" in c for c in contents), (
+        "Entry with both terms should pass relevance threshold"
+    )
+    # Weak match (only "xylophone", 1/3 terms) filtered by threshold
+    assert not any("metal bars" in c for c in contents), (
+        "Entry matching only 1/3 query terms should be filtered"
+    )
+
+
+def test_search_with_empty_query_terms(db):
+    """Search with punctuation-only query gracefully handles empty terms (covers retrieve.py:391)."""
+    entries = [
+        make_entry(
+            content="Database connection pooling pattern for PostgreSQL.",
+            type="pattern",
+            tags=["database"],
+            branch="main",
+            project_id=MOCK_PROJECT_ID,
+        ),
+    ]
+    insert_entries(db, entries)
+
+    # This tests the _passes_relevance_threshold with no query_terms
+    # FTS5 may or may not return results for punctuation-only queries,
+    # but the code path should not crash
+    from momento.retrieve import _passes_relevance_threshold, _extract_query_terms
+    from momento.models import Entry
+    import json
+
+    terms = _extract_query_terms("---")
+    assert terms == [], "Punctuation-only query should produce no terms"
+
+    # With empty terms, _passes_relevance_threshold should return True
+    dummy = Entry(
+        id="test", content="anything", content_hash="x", type="gotcha",
+        tags=json.dumps(["server"]), project_id=MOCK_PROJECT_ID,
+        project_name=MOCK_PROJECT_NAME, branch="main",
+        source_type="manual", confidence=0.9,
+        created_at="2026-01-01T00:00:00Z", updated_at="2026-01-01T00:00:00Z",
+    )
+    assert _passes_relevance_threshold(dummy, []) is True

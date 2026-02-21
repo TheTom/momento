@@ -7,7 +7,7 @@ name = "momento"
 version = "0.1.0"
 description = "Deterministic State Recovery for AI Coding Agents"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["mcp>=1.0"]
 
 [project.optional-dependencies]
 dev = [

@@ -16,6 +16,7 @@ from momento.cli import (
     main as cli_main,
     cmd_save,
     cmd_status,
+    cmd_last,
     cmd_log,
     cmd_undo,
     cmd_inspect,
@@ -25,6 +26,7 @@ from momento.cli import (
     cmd_ingest,
     _format_age,
     _get_db_path,
+    _parse_duration,
 )
 from momento.store import log_knowledge
 from momento.db import ensure_db
@@ -32,6 +34,8 @@ from momento.retrieve import retrieve_context
 from tests.mock_data import (
     MOCK_PROJECT_ID,
     MOCK_PROJECT_NAME,
+    SECOND_PROJECT_ID,
+    SECOND_PROJECT_NAME,
     make_entry,
     make_restore_scenario,
     hours_ago,
@@ -241,9 +245,9 @@ class TestMomentoSave:
         tags = json.loads(row[0])
         assert "server" in tags, "Tags should include surface tag 'server'"
 
-    def test_save_auto_detects_surface_from_dir(self, db, tmp_path):
+    def test_save_auto_detects_surface_from_dir(self, db, mock_git_repo):
         """save auto-detects surface from args.dir when --surface not provided."""
-        server_dir = tmp_path / "repo" / "server" / "handlers"
+        server_dir = mock_git_repo / "server" / "handlers"
         server_dir.mkdir(parents=True)
 
         args = SimpleNamespace(
@@ -889,13 +893,14 @@ class TestCmdDebugRestoreDirect:
 class TestCmdIngestDirect:
     """Cover cmd_ingest (lines 224-236)."""
 
-    def test_ingest_no_files(self, db, capsys):
-        args = SimpleNamespace(files=[])
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_ingest(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
-        assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "No files specified" in err
+    def test_ingest_no_files_defaults_to_project(self, db, capsys, tmp_path):
+        """No files + no --all: defaults to ingest_project for current dir."""
+        args = SimpleNamespace(files=[], ingest_all=False, dir=str(tmp_path))
+        cmd_ingest(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        # Should still print summary (0 files since no Claude Code dir exists)
+        assert "Files:" in out
+        assert "Stored:" in out
 
     def test_ingest_with_files(self, db, capsys, tmp_path):
         """Ingest a real JSONL file."""
@@ -911,7 +916,7 @@ class TestCmdIngestDirect:
             "source_type": "ingest",
         })
         jsonl.write_text(line + "\n")
-        args = SimpleNamespace(files=[str(jsonl)])
+        args = SimpleNamespace(files=[str(jsonl)], ingest_all=False, dir=".")
         cmd_ingest(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
         out = capsys.readouterr().out
         assert "Files:" in out
@@ -1010,3 +1015,379 @@ class TestCmdLogError:
             assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "Error: DB write failed" in err
+
+
+class TestCmdLastDirect:
+    """Cover cmd_last (lines 89-105)."""
+
+    def test_last_no_entries(self, db, capsys):
+        """cmd_last with empty DB prints 'No entries found.'"""
+        args = SimpleNamespace()
+        cmd_last(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "No entries found" in out
+
+    def test_last_shows_entry(self, db, capsys):
+        """cmd_last prints type, age, tags, branch, and content."""
+        entry = make_entry(
+            content="Latest checkpoint for billing migration.",
+            type="decision",
+            tags=["billing", "stripe"],
+            branch="feature/billing",
+            created_at=minutes_ago(10),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace()
+        cmd_last(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "[decision]" in out
+        assert "billing" in out
+        assert "stripe" in out
+        assert "feature/billing" in out
+        assert "Latest checkpoint" in out
+
+    def test_last_with_none_branch(self, db, capsys):
+        """cmd_last handles None branch as '(none)'."""
+        entry = make_entry(
+            content="Entry with no branch.",
+            type="gotcha",
+            tags=[],
+            branch=None,
+            created_at=minutes_ago(5),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace()
+        cmd_last(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "(none)" in out
+
+
+# ---------------------------------------------------------------------------
+# PRD Section 12 — undo --type, inspect filters, prune modes
+# ---------------------------------------------------------------------------
+
+
+class TestCmdUndoTypeFilter:
+    """PRD: 'momento undo --type=decision' — undo most recent of specific type."""
+
+    def test_undo_type_targets_specific_type(self, db, capsys):
+        """--type=decision undoes most recent decision, not the overall most recent."""
+        # Insert a decision (older) and a session_state (newer)
+        entries = [
+            make_entry(
+                content="Decision to undo.",
+                type="decision",
+                tags=["server"],
+                branch="main",
+                created_at=minutes_ago(10),
+            ),
+            make_entry(
+                content="Most recent session state.",
+                type="session_state",
+                tags=["server"],
+                branch="main",
+                created_at=minutes_ago(1),
+            ),
+        ]
+        insert_entries(db, entries)
+        args = SimpleNamespace(type="decision")
+        with patch("builtins.input", return_value="y"):
+            cmd_undo(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "[decision]" in out
+        assert "Deleted:" in out
+        # Session state should still exist
+        remaining = db.execute(
+            "SELECT type FROM knowledge WHERE project_id = ?", (MOCK_PROJECT_ID,),
+        ).fetchall()
+        assert len(remaining) == 1
+        assert remaining[0][0] == "session_state"
+
+    def test_undo_type_no_match(self, db, capsys):
+        """--type=plan when no plans exist shows 'No entries to undo'."""
+        entry = make_entry(
+            content="A gotcha entry.",
+            type="gotcha",
+            tags=["server"],
+            branch="main",
+            created_at=minutes_ago(5),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace(type="plan")
+        cmd_undo(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "No entries to undo" in out
+
+
+class TestCmdInspectFilters:
+    """PRD: inspect with --all, --type, --tags, positional entry-id."""
+
+    def _insert_mixed_entries(self, db):
+        entries = [
+            make_entry(
+                content="Auth decision for server.",
+                type="decision",
+                tags=["auth", "server"],
+                branch="main",
+                created_at=days_ago(1),
+            ),
+            make_entry(
+                content="Billing gotcha for iOS.",
+                type="gotcha",
+                tags=["billing", "ios"],
+                branch="main",
+                created_at=days_ago(2),
+            ),
+            make_entry(
+                content="Cross-project pattern.",
+                type="pattern",
+                tags=["server"],
+                branch="main",
+                created_at=days_ago(3),
+                project_id=SECOND_PROJECT_ID,
+                project_name=SECOND_PROJECT_NAME,
+            ),
+        ]
+        insert_entries(db, entries)
+        return entries
+
+    def test_inspect_type_filter(self, db, capsys):
+        """--type gotcha returns only gotcha entries."""
+        self._insert_mixed_entries(db)
+        args = SimpleNamespace(entry_id=None, all=False, type="gotcha", tags=None)
+        cmd_inspect(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "[gotcha]" in out
+        assert "[decision]" not in out
+
+    def test_inspect_tags_filter(self, db, capsys):
+        """--tags auth returns only entries tagged 'auth'."""
+        self._insert_mixed_entries(db)
+        args = SimpleNamespace(entry_id=None, all=False, type=None, tags="auth")
+        cmd_inspect(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Auth decision" in out
+        assert "Billing" not in out
+
+    def test_inspect_all_projects(self, db, capsys):
+        """--all shows entries from all projects."""
+        self._insert_mixed_entries(db)
+        args = SimpleNamespace(entry_id=None, all=True, type=None, tags=None)
+        cmd_inspect(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Cross-project pattern" in out
+        assert "Auth decision" in out
+
+    def test_inspect_entry_id(self, db, capsys):
+        """Positional entry-id shows full detail of a single entry."""
+        entries = self._insert_mixed_entries(db)
+        entry_id = entries[0]["id"]
+        args = SimpleNamespace(entry_id=entry_id)
+        cmd_inspect(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "ID:" in out
+        assert "Type:" in out
+        assert "Content:" in out
+        assert "Auth decision" in out
+
+    def test_inspect_entry_id_not_found(self, db, capsys):
+        """Positional entry-id that doesn't exist shows error."""
+        args = SimpleNamespace(entry_id="nonexistent-id")
+        cmd_inspect(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Entry not found" in out
+
+    def test_inspect_entry_id_global_entry(self, db, capsys):
+        """Entry detail mode should handle NULL project_id/project_name."""
+        result = log_knowledge(
+            conn=db,
+            content="Global entry for inspect detail mode.",
+            type="decision",
+            tags=["global"],
+            project_id=None,
+            project_name=None,
+            branch=None,
+            source_type="manual",
+            enforce_limits=False,
+        )
+        args = SimpleNamespace(entry_id=result["id"])
+        cmd_inspect(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Project:    (global)" in out
+
+
+class TestCmdPruneModes:
+    """PRD: prune by ID, --type/--older-than filters, --auto."""
+
+    def test_prune_by_entry_id(self, db, capsys):
+        """momento prune <entry-id> — delete specific entry."""
+        entry = make_entry(
+            content="Entry to prune by ID.",
+            type="gotcha",
+            tags=["server"],
+            branch="main",
+            created_at=minutes_ago(30),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace(entry_id=entry["id"], type=None, older_than=None, auto=False)
+        with patch("builtins.input", return_value="y"):
+            cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Deleted:" in out
+        count = db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+        assert count == 0
+
+    def test_prune_by_entry_id_not_found(self, db, capsys):
+        """Non-existent entry ID shows error."""
+        args = SimpleNamespace(entry_id="nonexistent", type=None, older_than=None, auto=False)
+        cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Entry not found" in out
+
+    def test_prune_by_entry_id_cancelled(self, db, capsys):
+        """Prune by ID with 'n' response cancels."""
+        entry = make_entry(
+            content="Entry to not prune.",
+            type="gotcha",
+            tags=["server"],
+            branch="main",
+            created_at=minutes_ago(30),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace(entry_id=entry["id"], type=None, older_than=None, auto=False)
+        with patch("builtins.input", return_value="n"):
+            cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Cancelled" in out
+        count = db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+        assert count == 1
+
+    def test_prune_type_and_older_than(self, db, capsys):
+        """--type session_state --older-than 30d deletes matching entries."""
+        entries = [
+            make_entry(
+                content="Old session state.",
+                type="session_state",
+                tags=["server"],
+                branch="main",
+                created_at=days_ago(45),
+            ),
+            make_entry(
+                content="Recent session state.",
+                type="session_state",
+                tags=["server"],
+                branch="main",
+                created_at=days_ago(1),
+            ),
+            make_entry(
+                content="Old decision (should not be deleted).",
+                type="decision",
+                tags=["server"],
+                branch="main",
+                created_at=days_ago(45),
+            ),
+        ]
+        insert_entries(db, entries)
+        args = SimpleNamespace(entry_id=None, type="session_state", older_than="30d", auto=False)
+        with patch("builtins.input", return_value="y"):
+            cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Pruned 1 entries" in out
+        # Recent session_state and old decision should remain
+        remaining = db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+        assert remaining == 2
+
+    def test_prune_type_filter_nothing_to_prune(self, db, capsys):
+        """--type with no matching entries shows 'Nothing to prune'."""
+        args = SimpleNamespace(entry_id=None, type="plan", older_than=None, auto=False)
+        cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Nothing to prune" in out
+
+    def test_prune_type_filter_cancelled(self, db, capsys):
+        """--type filter with 'n' response cancels."""
+        entry = make_entry(
+            content="Decision to maybe prune.",
+            type="decision",
+            tags=["server"],
+            branch="main",
+            created_at=days_ago(1),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace(entry_id=None, type="decision", older_than=None, auto=False)
+        with patch("builtins.input", return_value="n"):
+            cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Cancelled" in out
+
+    def test_prune_invalid_duration(self, db, capsys):
+        """Invalid --older-than value exits with error."""
+        args = SimpleNamespace(entry_id=None, type=None, older_than="xyz", auto=False)
+        with pytest.raises(SystemExit):
+            cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+
+    def test_prune_no_flags_shows_usage(self, db, capsys):
+        """No flags at all shows usage hint."""
+        args = SimpleNamespace(entry_id=None, type=None, older_than=None, auto=False)
+        cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "--auto" in out
+
+    def test_prune_older_than_hours(self, db, capsys):
+        """--older-than 24h uses hour-based duration (covers _parse_duration hours path)."""
+        entries = [
+            make_entry(
+                content="Old entry from 2 days ago.",
+                type="gotcha",
+                tags=["server"],
+                branch="main",
+                created_at=days_ago(2),
+            ),
+            make_entry(
+                content="Recent entry from 1 hour ago.",
+                type="gotcha",
+                tags=["server"],
+                branch="main",
+                created_at=hours_ago(1),
+            ),
+        ]
+        insert_entries(db, entries)
+        args = SimpleNamespace(entry_id=None, type=None, older_than="24h", auto=False)
+        with patch("builtins.input", return_value="y"):
+            cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Pruned 1 entries" in out
+
+    def test_prune_invalid_unit(self, db, capsys):
+        """--older-than with unknown unit (e.g. '30m') triggers invalid path."""
+        args = SimpleNamespace(entry_id=None, type=None, older_than="30m", auto=False)
+        with pytest.raises(SystemExit):
+            cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+
+
+class TestParseDuration:
+    """Cover _parse_duration edge cases."""
+
+    def test_empty_string(self):
+        from momento.cli import _parse_duration
+        assert _parse_duration("") is None
+
+    def test_days(self):
+        from momento.cli import _parse_duration
+        result = _parse_duration("30d")
+        assert result == timedelta(days=30)
+
+    def test_hours(self):
+        from momento.cli import _parse_duration
+        result = _parse_duration("24h")
+        assert result == timedelta(hours=24)
+
+    def test_unknown_unit(self):
+        from momento.cli import _parse_duration
+        assert _parse_duration("10x") is None

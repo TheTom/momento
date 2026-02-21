@@ -10,6 +10,7 @@ from momento.db import ensure_db
 from momento.identity import resolve_project_id, resolve_branch
 from momento.surface import detect_surface
 from momento.store import log_knowledge
+from momento.tokens import format_age
 
 
 # Default DB location
@@ -28,19 +29,7 @@ def _get_db_path() -> str:
     return os.environ.get("MOMENTO_DB", _DEFAULT_DB_PATH)
 
 
-def _format_age(iso_timestamp: str) -> str:
-    """Format an ISO timestamp as a human-readable age string."""
-    dt = datetime.strptime(iso_timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(
-        tzinfo=timezone.utc
-    )
-    delta = datetime.now(timezone.utc) - dt
-    if delta.days > 0:
-        return f"{delta.days}d ago"
-    hours = delta.seconds // 3600
-    if hours > 0:
-        return f"{hours}h ago"
-    minutes = delta.seconds // 60
-    return f"{minutes}m ago"
+_format_age = format_age  # Backward compat alias for internal callers
 
 
 def cmd_status(args, conn, project_id, project_name, branch):
@@ -82,6 +71,27 @@ def cmd_status(args, conn, project_id, project_name, branch):
         print("Last checkpoint: none")
 
     print(f"DB size: {db_size:,} bytes")
+
+
+def cmd_last(args, conn, project_id, project_name, branch):
+    """Show the most recent entry for the current project."""
+    cursor = conn.execute(
+        "SELECT type, content, tags, branch, created_at FROM knowledge "
+        "WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
+        (project_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        print("No entries found.")
+        return
+
+    entry_type, content, tags_json, entry_branch, created_at = row
+    tags = json.loads(tags_json)
+    age = _format_age(created_at)
+    branch_str = entry_branch or "(none)"
+    tag_str = ", ".join(tags) if tags else ""
+    print(f"[{entry_type}] {age} ({tag_str}, {branch_str})")
+    print(f'"{content}"')
 
 
 def cmd_save(args, conn, project_id, project_name, branch):
@@ -141,12 +151,23 @@ def cmd_log(args, conn, project_id, project_name, branch):
 
 
 def cmd_undo(args, conn, project_id, project_name, branch):
-    """Delete most recent entry from current project (with confirmation)."""
-    cursor = conn.execute(
-        "SELECT id, content, type, created_at FROM knowledge "
-        "WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
-        (project_id,),
-    )
+    """Delete most recent entry from current project (with confirmation).
+
+    Supports --type to target a specific entry type.
+    """
+    type_filter = getattr(args, "type", None)
+    if type_filter:
+        cursor = conn.execute(
+            "SELECT id, content, type, created_at FROM knowledge "
+            "WHERE project_id = ? AND type = ? ORDER BY created_at DESC LIMIT 1",
+            (project_id, type_filter),
+        )
+    else:
+        cursor = conn.execute(
+            "SELECT id, content, type, created_at FROM knowledge "
+            "WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
+            (project_id,),
+        )
     row = cursor.fetchone()
     if not row:
         print("No entries to undo.")
@@ -168,13 +189,64 @@ def cmd_undo(args, conn, project_id, project_name, branch):
 
 
 def cmd_inspect(args, conn, project_id, project_name, branch):
-    """List entries with type, branch, tags, age, content preview."""
+    """List entries with type, branch, tags, age, content preview.
+
+    Supports: --all (all projects), --type (filter), --tags (filter),
+    positional entry_id (single entry detail).
+    """
+    entry_id = getattr(args, "entry_id", None)
+    if entry_id:
+        cursor = conn.execute(
+            "SELECT id, type, branch, tags, created_at, content, project_id, project_name, "
+            "source_type, confidence FROM knowledge WHERE id = ?",
+            (entry_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            print(f"Entry not found: {entry_id}")
+            return
+        eid, etype, ebranch, etags_json, ecreated, econtent, epid, epname, esrc, econf = row
+        etags = json.loads(etags_json)
+        project_label = f"{epname} ({epid[:12]}...)" if epid else "(global)"
+        print(f"ID:         {eid}")
+        print(f"Type:       {etype}")
+        print(f"Project:    {project_label}")
+        print(f"Branch:     {ebranch or '(none)'}")
+        print(f"Tags:       {', '.join(etags) if etags else '(none)'}")
+        print(f"Source:     {esrc}")
+        print(f"Confidence: {econf}")
+        print(f"Created:    {ecreated} ({_format_age(ecreated)})")
+        print(f"Content:\n{econtent}")
+        return
+
+    # Build query with optional filters
+    show_all = getattr(args, "all", False)
+    type_filter = getattr(args, "type", None)
+    tags_filter = getattr(args, "tags", None)
+
+    conditions = []
+    params = []
+    if not show_all:
+        conditions.append("project_id = ?")
+        params.append(project_id)
+    if type_filter:
+        conditions.append("type = ?")
+        params.append(type_filter)
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     cursor = conn.execute(
-        "SELECT type, branch, tags, created_at, content FROM knowledge "
-        "WHERE project_id = ? ORDER BY created_at DESC",
-        (project_id,),
+        f"SELECT type, branch, tags, created_at, content FROM knowledge "
+        f"{where} ORDER BY created_at DESC",
+        params,
     )
     rows = cursor.fetchall()
+
+    # Post-filter by tag (SQLite JSON filtering is messy, simpler in Python)
+    if tags_filter:
+        rows = [
+            r for r in rows
+            if tags_filter.lower() in [t.lower() for t in json.loads(r[2])]
+        ]
 
     if not rows:
         print("No entries found.")
@@ -191,19 +263,112 @@ def cmd_inspect(args, conn, project_id, project_name, branch):
         print()
 
 
+def _parse_duration(duration_str: str) -> timedelta | None:
+    """Parse duration string like '30d', '24h' into timedelta. Returns None on failure."""
+    if not duration_str:
+        return None
+    unit = duration_str[-1].lower()
+    try:
+        value = int(duration_str[:-1])
+    except (ValueError, IndexError):
+        return None
+    if unit == "d":
+        return timedelta(days=value)
+    if unit == "h":
+        return timedelta(hours=value)
+    return None
+
+
 def cmd_prune(args, conn, project_id, project_name, branch):
-    """Prune old session_state entries (>7 days by default)."""
-    if not args.auto:
-        print("Use --auto to auto-prune session_state entries older than 7 days.")
+    """Prune entries: by ID, by type+age, or auto-prune session_state.
+
+    Modes (per PRD Section 12):
+    - momento prune <entry-id>         — delete specific entry
+    - momento prune --type X --older-than 30d — filter by type and age
+    - momento prune --auto             — auto-prune session_state >7d + overflow
+    """
+    entry_id = getattr(args, "entry_id", None)
+    type_filter = getattr(args, "type", None)
+    older_than = getattr(args, "older_than", None)
+
+    # Mode 1: delete specific entry by ID
+    if entry_id:
+        row = conn.execute(
+            "SELECT id, type, content FROM knowledge WHERE id = ? AND project_id = ?",
+            (entry_id, project_id),
+        ).fetchone()
+        if not row:
+            print(f"Entry not found: {entry_id}")
+            return
+        preview = row[2][:60] + "..." if len(row[2]) > 60 else row[2]
+        print(f"[{row[1]}] {preview}")
+        confirm = input("Delete this entry? [y/N] ").strip().lower()
+        if confirm in ("y", "yes"):
+            conn.execute("DELETE FROM knowledge WHERE id = ?", (entry_id,))
+            conn.commit()
+            print(f"Deleted: {entry_id}")
+        else:
+            print("Cancelled.")
         return
 
-    cursor = conn.execute(
+    # Mode 2: filter by type and/or older-than
+    if type_filter or older_than:
+        conditions = ["project_id = ?"]
+        params: list = [project_id]
+        if type_filter:
+            conditions.append("type = ?")
+            params.append(type_filter)
+        if older_than:
+            delta = _parse_duration(older_than)
+            if delta is None:
+                print(f"Invalid duration: {older_than} (use e.g. 30d, 24h)", file=sys.stderr)
+                sys.exit(1)
+            cutoff = (datetime.now(timezone.utc) - delta).strftime("%Y-%m-%dT%H:%M:%SZ")
+            conditions.append("created_at < ?")
+            params.append(cutoff)
+
+        where = " AND ".join(conditions)
+        count = conn.execute(
+            f"SELECT COUNT(*) FROM knowledge WHERE {where}", params,
+        ).fetchone()[0]
+
+        if count == 0:
+            print("Nothing to prune.")
+            return
+
+        print(f"Will delete {count} entries matching filters.")
+        confirm = input("Proceed? [y/N] ").strip().lower()
+        if confirm in ("y", "yes"):
+            conn.execute(f"DELETE FROM knowledge WHERE {where}", params)
+            conn.commit()
+            print(f"Pruned {count} entries.")
+        else:
+            print("Cancelled.")
+        return
+
+    # Mode 3: --auto
+    if not args.auto:
+        print("Use --auto, --type/--older-than filters, or provide an entry ID.")
+        return
+
+    old_count = conn.execute(
         "SELECT COUNT(*) FROM knowledge WHERE type = 'session_state' "
         "AND project_id = ? "
         "AND julianday(replace(replace(created_at, 'T', ' '), 'Z', '')) < julianday('now', ?)",
         (project_id, f"-{_PRUNE_SESSION_AGE_DAYS} days"),
-    )
-    count = cursor.fetchone()[0]
+    ).fetchone()[0]
+
+    overflow_count = conn.execute(
+        "SELECT COUNT(*) FROM ("
+        "  SELECT id FROM knowledge "
+        "  WHERE type = 'session_state' AND project_id = ? "
+        "    AND julianday(replace(replace(created_at, 'T', ' '), 'Z', '')) >= julianday('now', '-1 day') "
+        "  ORDER BY created_at DESC "
+        "  LIMIT -1 OFFSET 5"
+        ")",
+        (project_id,),
+    ).fetchone()[0]
+    count = old_count + overflow_count
 
     if count == 0:
         print("Nothing to prune.")
@@ -215,25 +380,47 @@ def cmd_prune(args, conn, project_id, project_name, branch):
         "AND julianday(replace(replace(created_at, 'T', ' '), 'Z', '')) < julianday('now', ?)",
         (project_id, f"-{_PRUNE_SESSION_AGE_DAYS} days"),
     )
+    conn.execute(
+        "DELETE FROM knowledge WHERE id IN ("
+        "  SELECT id FROM knowledge "
+        "  WHERE type = 'session_state' AND project_id = ? "
+        "    AND julianday(replace(replace(created_at, 'T', ' '), 'Z', '')) >= julianday('now', '-1 day') "
+        "  ORDER BY created_at DESC "
+        "  LIMIT -1 OFFSET 5"
+        ")",
+        (project_id,),
+    )
     conn.commit()
     print(f"Pruned {count} stale session_state entries.")
 
 
 def cmd_ingest(args, conn, project_id, project_name, branch):
-    """Ingest JSONL files."""
-    from momento.ingest import ingest_file, ingest_files
+    """Ingest JSONL files or Claude Code session logs.
 
-    if args.files:
+    Modes:
+    - `momento ingest` (no args): ingest current project's session logs
+    - `momento ingest --all`: ingest all known Claude Code projects
+    - `momento ingest file1.jsonl file2.jsonl`: ingest explicit JSONL files
+    """
+    from momento.ingest import ingest_file, ingest_files, ingest_project, ingest_all
+
+    if args.ingest_all:
+        result = ingest_all(conn)
+        # Show projects_scanned for --all mode
+        if "projects_scanned" in result:
+            print(f"Projects: {result['projects_scanned']}")
+    elif args.files:
         result = ingest_files(conn, args.files)
     else:
-        print("No files specified. Use: momento ingest <file1> [file2 ...]", file=sys.stderr)
-        sys.exit(1)
+        # Default: ingest current project's Claude Code session logs
+        working_dir = os.path.abspath(args.dir)
+        result = ingest_project(conn, working_dir)
 
-    print(f"Files:   {result.get('files_processed', 1)}")
-    print(f"Lines:   {result['lines_processed']}")
-    print(f"Stored:  {result['entries_stored']}")
-    print(f"Skipped: {result['lines_skipped']}")
-    print(f"Dupes:   {result['dupes_skipped']}")
+    print(f"Files:   {result.get('files_processed', 0)}")
+    print(f"Lines:   {result.get('lines_processed', 0)}")
+    print(f"Stored:  {result.get('entries_stored', 0)}")
+    print(f"Skipped: {result.get('lines_skipped', 0)}")
+    print(f"Dupes:   {result.get('dupes_skipped', 0)}")
 
 
 def cmd_search(args, conn, project_id, project_name, branch):
@@ -288,11 +475,7 @@ def cmd_debug_restore(args, conn, project_id, project_name, branch):
 
 
 def main() -> None:
-    """CLI entry point.
-
-    Commands: status, last, save, log, undo, inspect, prune,
-    ingest, search, debug-restore.
-    """
+    """CLI entry point."""
     parser = argparse.ArgumentParser(
         prog="momento",
         description="Momento — trust anchors for developers",
@@ -304,6 +487,9 @@ def main() -> None:
 
     # status
     subparsers.add_parser("status", help="Show project status")
+
+    # last
+    subparsers.add_parser("last", help="Show most recent entry")
 
     # save
     save_p = subparsers.add_parser("save", help="Save a session checkpoint")
@@ -318,18 +504,28 @@ def main() -> None:
     log_p.add_argument("--tags", help="Comma-separated tags")
 
     # undo
-    subparsers.add_parser("undo", help="Delete most recent entry")
+    undo_p = subparsers.add_parser("undo", help="Delete most recent entry")
+    undo_p.add_argument("--type", help="Undo most recent entry of this type")
 
     # inspect
-    subparsers.add_parser("inspect", help="List all entries")
+    inspect_p = subparsers.add_parser("inspect", help="List all entries")
+    inspect_p.add_argument("entry_id", nargs="?", help="Show single entry detail")
+    inspect_p.add_argument("--all", action="store_true", help="Show entries from all projects")
+    inspect_p.add_argument("--type", help="Filter by entry type")
+    inspect_p.add_argument("--tags", help="Filter by tag")
 
     # prune
     prune_p = subparsers.add_parser("prune", help="Prune old entries")
+    prune_p.add_argument("entry_id", nargs="?", help="Delete specific entry by ID")
     prune_p.add_argument("--auto", action="store_true", help="Auto-prune session_state >7d")
+    prune_p.add_argument("--type", help="Filter by entry type")
+    prune_p.add_argument("--older-than", dest="older_than", help="Age threshold (e.g. 30d, 24h)")
 
     # ingest
     ingest_p = subparsers.add_parser("ingest", help="Ingest JSONL files")
-    ingest_p.add_argument("files", nargs="*", help="JSONL file paths")
+    ingest_p.add_argument("files", nargs="*", help="JSONL file paths (optional)")
+    ingest_p.add_argument("--all", action="store_true", dest="ingest_all",
+                          help="Ingest from all Claude Code projects")
 
     # search
     search_p = subparsers.add_parser("search", help="Search knowledge")
@@ -359,6 +555,7 @@ def main() -> None:
     # Dispatch
     commands = {
         "status": cmd_status,
+        "last": cmd_last,
         "save": cmd_save,
         "log": cmd_log,
         "undo": cmd_undo,

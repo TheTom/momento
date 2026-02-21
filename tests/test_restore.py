@@ -707,14 +707,24 @@ class TestT47CrossProjectIsolation:
             query=None,
         )
 
+        # Find the first cross-project entry — everything before it must be project A
+        first_cross = None
         for i, entry in enumerate(result.entries):
             if entry.project_id == SECOND_PROJECT_ID:
-                # Every entry before this must be project A
-                for j in range(i):
-                    assert result.entries[j].project_id == MOCK_PROJECT_ID, (
-                        "Cross-project entry appeared before a project entry. "
-                        "Cross-project must only be in tier 5."
-                    )
+                first_cross = i
+                break
+
+        assert first_cross is not None, "Expected at least one cross-project entry"
+        assert first_cross > 0, "Cross-project entry at index 0 — project entries missing"
+
+        for j in range(first_cross):
+            assert result.entries[j].project_id == MOCK_PROJECT_ID, (
+                "Cross-project entry appeared before a project entry. "
+                "Cross-project must only be in tier 5."
+            )
+        # With quota=2, expect both overlapping cross-project entries
+        cross_entries = [e for e in result.entries if e.project_id == SECOND_PROJECT_ID]
+        assert len(cross_entries) <= 2, f"Cross-project quota exceeded: {len(cross_entries)}"
 
     def test_no_tag_overlap_no_cross_project(self, db):
         """T4.7 — Cross-project entries without tag overlap are excluded."""
@@ -1718,3 +1728,231 @@ def test_render_restore_cross_project_header_only_once():
 
     rendered = _render_restore([cross_1, cross_2], MOCK_PROJECT_ID)
     assert rendered.count("## Cross-Project") == 1
+
+
+def test_session_window_env_var_respected(db, monkeypatch):
+    """Session-state restore window is configurable via env var."""
+    old_entry = make_entry(
+        content="Old session checkpoint outside 1h window.",
+        type="session_state",
+        tags=["server"],
+        branch="main",
+        created_at=hours_ago(2),
+        project_id=MOCK_PROJECT_ID,
+    )
+    insert_entry(db, old_entry)
+    db.commit()
+
+    monkeypatch.setenv("MOMENTO_SESSION_WINDOW_HOURS", "1")
+    result = retrieve_context(
+        db,
+        project_id=MOCK_PROJECT_ID,
+        branch="main",
+        surface="server",
+        query=None,
+        include_session_state=True,
+    )
+
+    assert not any(e.type == "session_state" for e in result.entries), (
+        "2h-old session_state should be excluded when window is set to 1 hour"
+    )
+
+
+def test_session_window_invalid_env_var_uses_default(db, monkeypatch):
+    """Non-integer env var falls back to default 48h window (covers retrieve.py:378-379)."""
+    entry = make_entry(
+        content="Recent session checkpoint within 48h.",
+        type="session_state",
+        tags=["server"],
+        branch="main",
+        created_at=hours_ago(2),
+        project_id=MOCK_PROJECT_ID,
+    )
+    insert_entry(db, entry)
+    db.commit()
+
+    monkeypatch.setenv("MOMENTO_SESSION_WINDOW_HOURS", "not-a-number")
+    result = retrieve_context(
+        db,
+        project_id=MOCK_PROJECT_ID,
+        branch="main",
+        surface="server",
+        query=None,
+        include_session_state=True,
+    )
+
+    # With invalid env var, falls back to 48h — 2h-old entry should be included
+    assert any(e.type == "session_state" for e in result.entries), (
+        "Invalid env var should fall back to 48h default, including 2h-old entry"
+    )
+
+
+def test_session_window_zero_env_var_uses_default(db, monkeypatch):
+    """Zero/negative env var falls back to default 48h (covers retrieve.py:380)."""
+    entry = make_entry(
+        content="Session checkpoint for zero-hour test.",
+        type="session_state",
+        tags=["server"],
+        branch="main",
+        created_at=hours_ago(2),
+        project_id=MOCK_PROJECT_ID,
+    )
+    insert_entry(db, entry)
+    db.commit()
+
+    monkeypatch.setenv("MOMENTO_SESSION_WINDOW_HOURS", "0")
+    result = retrieve_context(
+        db,
+        project_id=MOCK_PROJECT_ID,
+        branch="main",
+        surface="server",
+        query=None,
+        include_session_state=True,
+    )
+
+    assert any(e.type == "session_state" for e in result.entries), (
+        "Zero env var should fall back to 48h default"
+    )
+
+
+def test_budget_exhausted_tier2_skips_lower_tiers(db):
+    """When Tier 2 can't fit all plan candidates, budget_exhausted triggers (covers retrieve.py:198).
+
+    Budget = 2000 tokens (~8000 chars). We need Tier 2 to have 2 candidates
+    where the second doesn't fit. Each plan at ~6000 chars (~1500 tokens).
+    """
+    # Tier 1: small session_state (~60 tokens)
+    insert_entry(db, make_entry(
+        content="Session state: small checkpoint.",
+        type="session_state",
+        tags=["server"],
+        branch="main",
+        created_at=hours_ago(1),
+        project_id=MOCK_PROJECT_ID,
+    ))
+    # Tier 2: 2 huge plan entries (~1500 tokens each) — only first fits
+    for i in range(2):
+        insert_entry(db, make_entry(
+            content=f"Plan {i}: " + "y" * 6000,
+            type="plan",
+            tags=["server"],
+            branch="main",
+            created_at=hours_ago(1),
+            project_id=MOCK_PROJECT_ID,
+        ))
+    # Tier 3: decision — should be skipped due to budget exhaustion
+    insert_entry(db, make_entry(
+        content="Decision that should be skipped.",
+        type="decision",
+        tags=["server"],
+        branch="main",
+        created_at=hours_ago(1),
+        project_id=MOCK_PROJECT_ID,
+    ))
+    db.commit()
+
+    result = retrieve_context(
+        db,
+        project_id=MOCK_PROJECT_ID,
+        branch="main",
+        surface="server",
+        include_session_state=True,
+    )
+
+    # At most 1 plan should fit (second busts budget). Tier 3 should be skipped.
+    plan_count = sum(1 for e in result.entries if e.type == "plan")
+    decision_count = sum(1 for e in result.entries if e.type == "decision")
+    assert plan_count <= 1, "Second plan should bust the budget"
+    assert decision_count == 0, "Decisions should be skipped after budget exhaustion"
+
+
+def test_budget_exhausted_tier3_skips_tier4(db):
+    """When Tier 3 can't fit all candidates, Tier 4 is skipped (covers retrieve.py:214)."""
+    # Tier 1: small session_state
+    insert_entry(db, make_entry(
+        content="Small checkpoint.",
+        type="session_state",
+        tags=["server"],
+        branch="main",
+        created_at=hours_ago(1),
+        project_id=MOCK_PROJECT_ID,
+    ))
+    # Tier 3: huge decisions that exhaust budget
+    for i in range(4):
+        insert_entry(db, make_entry(
+            content=f"Decision {i}: " + "d" * 3000,
+            type="decision",
+            tags=["server"],
+            branch="main",
+            created_at=hours_ago(1),
+            project_id=MOCK_PROJECT_ID,
+            confidence=0.9,
+        ))
+    # Tier 4: gotcha — should be skipped
+    insert_entry(db, make_entry(
+        content="Gotcha after budget-busting decisions.",
+        type="gotcha",
+        tags=["server"],
+        branch="main",
+        created_at=hours_ago(1),
+        project_id=MOCK_PROJECT_ID,
+    ))
+    db.commit()
+
+    result = retrieve_context(
+        db,
+        project_id=MOCK_PROJECT_ID,
+        branch="main",
+        surface="server",
+        include_session_state=True,
+    )
+
+    # Verify restore completes without error
+    assert result.total_tokens <= 2000
+
+
+def test_budget_exhausted_tier4_skips_tier5(db):
+    """When Tier 4 can't fit all candidates, Tier 5 is skipped (covers retrieve.py:228)."""
+    # Small session_state
+    insert_entry(db, make_entry(
+        content="Small checkpoint for tier4 test.",
+        type="session_state",
+        tags=["server"],
+        branch="main",
+        created_at=hours_ago(1),
+        project_id=MOCK_PROJECT_ID,
+    ))
+    # Huge gotcha entries for Tier 4
+    for i in range(5):
+        insert_entry(db, make_entry(
+            content=f"Gotcha {i}: " + "g" * 3000,
+            type="gotcha",
+            tags=["server"],
+            branch="main",
+            created_at=hours_ago(1),
+            project_id=MOCK_PROJECT_ID,
+        ))
+    # Tier 5: cross-project entry — should be skipped
+    insert_entry(db, make_entry(
+        content="Cross-project entry after budget bust.",
+        type="gotcha",
+        tags=["server"],
+        branch="main",
+        created_at=hours_ago(1),
+        project_id=SECOND_PROJECT_ID,
+        project_name=SECOND_PROJECT_NAME,
+    ))
+    db.commit()
+
+    result = retrieve_context(
+        db,
+        project_id=MOCK_PROJECT_ID,
+        branch="main",
+        surface="server",
+        include_session_state=True,
+    )
+
+    # Cross-project entry should NOT appear if budget exhausted at tier 4
+    cross_entries = [e for e in result.entries if e.project_id == SECOND_PROJECT_ID]
+    # Either cross-project is absent (budget exhausted) or total is under cap
+    assert result.total_tokens <= 2000

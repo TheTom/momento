@@ -69,6 +69,14 @@ Show project health: entry counts by type, DB size, last checkpoint age.
 momento status
 ```
 
+### `momento last`
+
+Show the most recent entry for the current project.
+
+```bash
+momento last
+```
+
 ### `momento save "<content>"`
 
 Quick session checkpoint. Type is always `session_state`. Surface and branch are auto-detected.
@@ -109,41 +117,52 @@ momento log "All API endpoints: validate -> authorize -> execute -> respond" \
 Delete the most recent entry from the current project. Prompts for confirmation.
 
 ```bash
-momento undo
+momento undo                    # Most recent entry of any type
+momento undo --type=decision    # Most recent decision specifically
 ```
 
 ### `momento inspect`
 
-List all entries for the current project.
+Browse the knowledge base with filters.
 
 ```bash
-momento inspect
+momento inspect                      # All entries, current project
+momento inspect --all                # All entries, all projects
+momento inspect --type gotcha        # Filter by entry type
+momento inspect --tags auth          # Filter by tag
+momento inspect <entry-id>           # Full detail of a single entry
 ```
 
 ### `momento prune`
 
-Auto-prune stale session state entries (older than 7 days).
+Delete entries by ID, filter, or auto-prune.
 
 ```bash
-momento prune --auto
+momento prune <entry-id>                          # Delete specific entry
+momento prune --type session_state --older-than 30d  # Filter by type + age
+momento prune --auto                              # Auto-prune session_state >7d + overflow
 ```
 
 ### `momento search "<query>"`
 
-Full-text keyword search via FTS5 (BM25 ranking). No tier ordering — pure relevance.
+Full-text keyword search via FTS5 (BM25 ranking), scoped to the current project. No tier ordering — pure relevance.
 
 ```bash
 momento search "keychain race condition"
 momento search "stripe webhook idempotency"
 ```
 
-### `momento ingest <files...>`
+### `momento ingest [files...]`
 
-Ingest entries from JSONL files (e.g., Claude Code session logs).
+Ingest knowledge from Claude Code session logs or explicit JSONL files. Three modes:
 
 ```bash
-momento ingest session1.jsonl session2.jsonl
+momento ingest                          # Current project's session logs
+momento ingest --all                    # All known Claude Code projects
+momento ingest session1.jsonl file2.jsonl  # Explicit JSONL files
 ```
+
+Session log ingestion extracts compaction summaries and error+resolution pairs. A keyword heuristic filter keeps only entries with actionable insight (e.g., contains "decided", "bug", "avoid", "pattern").
 
 Partial failures don't crash the run. Summary shows files processed, skipped, entries stored, duplicates skipped.
 
@@ -158,6 +177,66 @@ momento debug-restore --surface server
 
 ---
 
+## MCP Server
+
+Momento exposes two MCP tools for AI coding agents. The server is stateless — each call auto-resolves project, branch, and surface from the working directory.
+
+### Setup
+
+Register Momento as an MCP server (handled automatically by `./setup.sh`):
+
+**Claude Code** (`~/.claude/settings.json`):
+```json
+{
+  "mcpServers": {
+    "momento": {
+      "command": "python3",
+      "args": ["-m", "momento.mcp_server"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
+```
+
+### Tools
+
+#### `retrieve_context`
+
+Retrieve relevant knowledge for the current project. Two modes:
+- **Restore mode** (empty query): Deterministic 5-tier state reconstruction
+- **Search mode** (query provided): FTS5 keyword search
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | string | `""` | Search query. Empty = restore mode. |
+| `include_session_state` | boolean | `true` | Include in-progress task checkpoints. |
+
+#### `log_knowledge`
+
+Store a knowledge entry.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `content` | string | Yes | The knowledge to store. Be concise and actionable. |
+| `type` | string | Yes | One of: `session_state`, `decision`, `plan`, `gotcha`, `pattern` |
+| `tags` | array | Yes | Domain tags. E.g. `["auth", "ios", "keychain"]` |
+
+### Running Manually
+
+```bash
+python3 -m momento.mcp_server    # Starts stdio MCP server
+```
+
+### Agent Adapters
+
+Setup script can generate instruction files for:
+- **Claude Code**: Appends checkpoint/retrieval rules to `~/.claude/CLAUDE.md`
+- **Codex**: Generates `.codex_instructions.md` in your project root
+
+---
+
 ## How Restore Works
 
 When an agent loses context, Momento runs a **deterministic 5-tier state reconstruction**. Same inputs always produce identical output.
@@ -168,7 +247,7 @@ When an agent loses context, Momento runs a **deterministic 5-tier state reconst
 | 2 | `plan` | 2 | All time | What's the roadmap? |
 | 3 | `decision` | 3 | All time | What did we decide and why? |
 | 4 | `gotcha` + `pattern` | 4 combined | All time | What have we learned? |
-| 5 | Cross-project | 1 | All time | Solved this elsewhere? |
+| 5 | Cross-project | 2 | All time | Solved this elsewhere? |
 
 ### Sorting within each tier
 
@@ -178,6 +257,8 @@ branch_match DESC     -- entries from your current branch second
 created_at DESC       -- then most recent
 id ASC                -- stable tie-breaker
 ```
+
+**Tier 3 exception:** Decisions sort by `confidence DESC` between `branch_match` and `created_at`, so high-confidence decisions surface first regardless of recency.
 
 ### Token budget
 
@@ -208,20 +289,30 @@ Size limits are enforced on MCP calls to force compression. CLI bypasses limits 
 
 ## Surface Detection
 
-Momento auto-detects your working surface from the current directory path. Used to rank relevant entries higher in restore.
+Surface is detected from **mapped directory keywords** in the path under the git root. Only recognized keywords produce a surface — unmapped directories return `null`.
 
-| Path segment | Surface |
-|---|---|
-| `server` or `backend` | `server` |
-| `web` or `frontend` | `web` |
+| Directory Keyword | Surface |
+|-------------------|---------|
+| `server`, `backend` | `server` |
+| `web`, `frontend` | `web` |
 | `ios` | `ios` |
 | `android` | `android` |
 
+```
+/Users/tom/myproject/server/api/routes.py    →  surface = "server"
+/Users/tom/myproject/backend/jobs/worker.py  →  surface = "server"
+/Users/tom/myproject/frontend/app/page.tsx   →  surface = "web"
+/Users/tom/myproject/ios/Sources/App.swift   →  surface = "ios"
+/Users/tom/myproject/src/main.py             →  surface = null (unmapped)
+/Users/tom/myproject/                        →  surface = null (at root)
+```
+
 **Rules:**
-- Case-insensitive (`/Server` = `/server`)
-- Directory-boundary aware (`/observer` does NOT match `server`)
-- First match wins
-- No match = `null` (no surface preference applied)
+- Scans all path segments under git root for mapped keywords
+- Case-insensitive (`/Server` → `server`, `/FrontEnd` → `web`)
+- Hidden directories (starting with `.`) are skipped
+- At project root → `null` (no surface preference applied)
+- Surface is a preference signal for ranking, never a filter
 
 ---
 
@@ -260,7 +351,7 @@ Branch: `git branch --show-current` (case-sensitive, `None` for detached HEAD).
 - One convention + one example
 
 ### Tag conventions
-- **Surfaces:** `server`, `web`, `ios`, `android`
+- **Surfaces:** mapped directory keywords (`server`/`backend`, `web`/`frontend`, `ios`, `android`)
 - **Domains:** `auth`, `billing`, `networking`, `persistence`
 - **Infrastructure:** `database`, `docker`, `ci-cd`
 - Tags are auto-normalized: lowercased, trimmed, deduplicated, sorted alphabetically
@@ -327,14 +418,15 @@ pytest tests/ --cov=momento --cov-branch --cov-report=term-missing
 ```
 src/momento/
   __init__.py       # Version
-  cli.py            # Argparse CLI (9 commands)
+  cli.py            # Argparse CLI (10 commands)
   db.py             # Schema, WAL, FTS5 triggers, migrations
   identity.py       # Git-based project resolution
-  ingest.py         # JSONL batch ingestion
+  ingest.py         # JSONL batch ingestion + session log extraction
+  mcp_server.py     # MCP server (retrieve_context, log_knowledge)
   models.py         # Entry/RestoreResult dataclasses, SIZE_LIMITS
   retrieve.py       # 5-tier restore + FTS5 search
   store.py          # Write path with dedup + size validation
-  surface.py        # Directory-boundary surface detection
+  surface.py        # Surface detection (mapped keywords: server/backend/web/frontend/ios/android)
   tags.py           # Tag normalization (lowercase, sort, dedup)
   tokens.py         # Token estimation (len/4)
 

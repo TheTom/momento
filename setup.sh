@@ -140,6 +140,169 @@ conn.close()
     fi
 }
 
+# --- MCP & Agent Integration (interactive) ---
+register_mcp_server() {
+    local settings_file="$HOME/.claude/settings.json"
+    mkdir -p "$(dirname "$settings_file")"
+
+    "$PYTHON" -c "
+import json, os
+path = '$settings_file'
+data = {}
+if os.path.exists(path):
+    with open(path) as f:
+        data = json.load(f)
+if 'mcpServers' not in data:
+    data['mcpServers'] = {}
+data['mcpServers']['momento'] = {
+    'command': 'python3',
+    'args': ['-m', 'momento.mcp_server'],
+    'env': {'PYTHONUNBUFFERED': '1'}
+}
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+print('done')
+" && ok "Registered MCP server in $settings_file" \
+  || warn "Could not update $settings_file"
+}
+
+add_claude_adapter() {
+    local claude_md="$HOME/.claude/CLAUDE.md"
+    mkdir -p "$(dirname "$claude_md")"
+
+    if [[ -f "$claude_md" ]] && grep -q "Momento Context Recovery" "$claude_md"; then
+        ok "Momento adapter already present in $claude_md"
+        return 0
+    fi
+
+    cat >> "$claude_md" << 'ADAPTER'
+
+## Momento Context Recovery
+
+After any significant file change, decision, or completed subtask:
+  Call log_knowledge(type="session_state", tags=[<relevant domains>])
+  with what was done, what was decided, and what's next.
+  Keep it brief. Context can compact without warning.
+
+At session start or after /clear:
+  Call retrieve_context(include_session_state=true).
+  Use the returned context to orient yourself before taking action.
+
+When the user says "checkpoint" or "save progress":
+  Call log_knowledge(type="session_state", tags=[<relevant domains>])
+  with current task progress, decisions made, and remaining work.
+
+Before /compact (when user explicitly runs it):
+  Call log_knowledge(type="session_state", tags=["checkpoint"])
+  with comprehensive progress summary before executing.
+
+When encountering an unfamiliar error:
+  Call retrieve_context(query="<error description>").
+
+Before implementing a recurring pattern (auth, networking, persistence, caching):
+  Call retrieve_context(query="<pattern name>").
+
+After finalizing a significant decision or plan:
+  Call log_knowledge(type="decision" or "plan", tags=[<domains>])
+  with the decision, rationale, rejected alternatives, and implications.
+  Use the Historical Slice structure.
+ADAPTER
+    ok "Appended Momento adapter to $claude_md"
+}
+
+generate_codex_adapter() {
+    local codex_file="./.codex_instructions.md"
+
+    cat > "$codex_file" << 'CODEX'
+## Momento Checkpointing and Context Recovery
+
+You are paired with a local memory layer called Momento that stores
+durable checkpoints, decisions, plans, and known gotchas for the
+current project.
+
+### Checkpoint Conditions
+
+After you complete any of the following during a session:
+  - A significant file change (multi-file patch or cross-layer update)
+  - A resolved error with a concrete fix
+  - A finalized plan or architectural decision
+  - A completed subtask that meaningfully advances the main work
+  - A step that would be costly to re-explain if lost
+
+Call the MCP tool:
+  log_knowledge(
+    type="session_state",
+    content=<concise summary of progress, decisions, remaining tasks>,
+    tags=[<relevant domains>]
+  )
+
+### Save Before Risky Operations
+
+Before any operation that might reduce internal context (large patch
+application, file renames, or before leaving the session):
+  log_knowledge(type="session_state", ...)
+
+### Retrieval Triggers
+
+At session start or after any context loss (restart, resume, new chat):
+  Call retrieve_context(include_session_state=true).
+  Use the returned structured directives to orient yourself before
+  generating further code.
+
+When encountering an unfamiliar error:
+  Call retrieve_context(query="<error description>").
+
+### Decision and Plan Logging
+
+When you finalize a significant design decision or long-term plan:
+  log_knowledge(
+    type="decision" or "plan",
+    content=<Historical Slice structure>,
+    tags=[<relevant domains>]
+  )
+
+Historical Slice structure:
+  Decision: <What was chosen>
+  Rationale: <Why, tradeoffs, constraints>
+  Rejected: <Alternatives and why not>
+  Implications: <Consequences>
+
+### Behavior Expectations
+
+- Checkpoint on meaningful advancement only — not trivial edits
+- Do not checkpoint during speculative brainstorming
+- Do not rely on internal percentages or guesses about context usage
+- Only checkpoint when a logical subtask completes or before known risk
+CODEX
+    ok "Generated $codex_file"
+}
+
+setup_mcp_integration() {
+    echo ""
+    info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    info "  MCP & Agent Integration"
+    info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # --- Register MCP server in Claude Code ---
+    read -rp "Register Momento as an MCP server in Claude Code? [Y/n] " ans
+    if [[ "${ans:-Y}" =~ ^[Yy]$ ]]; then
+        register_mcp_server
+    fi
+
+    # --- Add adapter instructions to CLAUDE.md ---
+    read -rp "Add Momento instructions to your global CLAUDE.md? [Y/n] " ans
+    if [[ "${ans:-Y}" =~ ^[Yy]$ ]]; then
+        add_claude_adapter
+    fi
+
+    # --- Generate .codex_instructions.md ---
+    read -rp "Generate .codex_instructions.md in this project? [Y/n] " ans
+    if [[ "${ans:-Y}" =~ ^[Yy]$ ]]; then
+        generate_codex_adapter
+    fi
+}
+
 # --- Check-only mode ---
 check_only() {
     echo ""
@@ -197,6 +360,9 @@ main() {
 
     # Step 4: Verify
     verify
+
+    # Step 5: MCP & Agent Integration
+    setup_mcp_integration
 
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
