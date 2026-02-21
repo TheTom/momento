@@ -260,7 +260,7 @@ class TestT41RestoreContract:
     def test_gotcha_surface_preference(self, populated_db):
         """T4.1 — Within gotcha/pattern tier, server-tagged entries rank first.
 
-        Scenario has 1 server gotcha, 2 ios gotchas, 1 server+pg gotcha.
+        Scenario has 1 server gotcha and 2 ios gotchas.
         With surface='server', server gotchas should come first.
         """
         result = self._restore(populated_db)

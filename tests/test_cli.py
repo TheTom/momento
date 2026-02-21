@@ -414,7 +414,7 @@ class TestMomentoPruneAuto:
         db.execute(
             "DELETE FROM knowledge WHERE type = 'session_state' "
             "AND project_id = ? "
-            "AND created_at < datetime('now', '-7 days')",
+            "AND julianday(replace(replace(created_at, 'T', ' '), 'Z', '')) < julianday('now', '-7 days')",
             (MOCK_PROJECT_ID,),
         )
         db.commit()
@@ -457,7 +457,7 @@ class TestMomentoPruneAuto:
         db.execute(
             "DELETE FROM knowledge WHERE type = 'session_state' "
             "AND project_id = ? "
-            "AND created_at < datetime('now', '-7 days')",
+            "AND julianday(replace(replace(created_at, 'T', ' '), 'Z', '')) < julianday('now', '-7 days')",
             (MOCK_PROJECT_ID,),
         )
         db.commit()
@@ -489,9 +489,12 @@ class TestMomentoDebugRestore:
             include_session_state=True,
         )
 
-        # Result should be a non-empty string with structured content
-        assert isinstance(result, str), "retrieve_context should return a string"
-        assert len(result) > 0, "Result should not be empty"
+        # Result should be structured RestoreResult with rendered output
+        assert hasattr(result, "entries"), "retrieve_context should return RestoreResult"
+        assert hasattr(result, "rendered"), "retrieve_context should return RestoreResult"
+        assert hasattr(result, "total_tokens"), "retrieve_context should return RestoreResult"
+        assert isinstance(result.rendered, str), "RestoreResult.rendered should be a string"
+        assert len(result.rendered) > 0, "Rendered output should not be empty"
 
         # TODO: When debug-restore CLI is implemented, verify it shows:
         # - tier breakdown

@@ -357,7 +357,7 @@ def test_id_format_is_uuidv4(db):
 
 @pytest.mark.should_pass
 def test_transaction_atomicity(db):
-    """T3.10: if FTS trigger fails (simulated via corrupted FTS index),
+    """T3.10: if trigger work fails during INSERT,
     the entire transaction rolls back — no partial entry in knowledge,
     no orphaned FTS row.
     """
@@ -375,38 +375,40 @@ def test_transaction_atomicity(db):
     baseline_count = db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
     assert baseline_count == 1
 
-    # Corrupt the FTS index by dropping it and recreating without triggers
-    # This simulates a state where FTS insert would fail
+    # Simulate trigger failure deterministically.
+    # If any AFTER INSERT trigger step fails, the INSERT must rollback fully.
     db.execute("DROP TRIGGER IF EXISTS knowledge_ai")
-    db.execute("DROP TRIGGER IF EXISTS knowledge_ad")
-    db.execute("DROP TRIGGER IF EXISTS knowledge_au")
-    db.execute("DROP TABLE IF EXISTS knowledge_fts")
-    # Create a broken FTS table (wrong schema)
-    db.execute(
-        "CREATE VIRTUAL TABLE knowledge_fts USING fts5(nonexistent_col)"
-    )
-    # Recreate the insert trigger pointing to wrong columns → will fail
     db.execute("""
         CREATE TRIGGER knowledge_ai AFTER INSERT ON knowledge BEGIN
-          INSERT INTO knowledge_fts(rowid, nonexistent_col)
-          VALUES (new.rowid, new.content);
+          SELECT RAISE(ABORT, 'simulated trigger failure');
         END
     """)
 
     # Now try to insert — should fail and roll back
-    result = log_knowledge(
-        conn=db,
-        content="This entry should not persist due to FTS failure.",
-        type="decision",
-        tags=["atomicity"],
-        project_id=MOCK_PROJECT_ID,
-        project_name=MOCK_PROJECT_NAME,
-        branch="main",
-    )
+    try:
+        result = log_knowledge(
+            conn=db,
+            content="This entry should not persist due to trigger failure.",
+            type="decision",
+            tags=["atomicity"],
+            project_id=MOCK_PROJECT_ID,
+            project_name=MOCK_PROJECT_NAME,
+            branch="main",
+        )
+        assert "error" in result, "Failure path should surface an error when insert aborts"
+    except Exception:
+        # Also acceptable: implementation raises and caller handles it.
+        pass
 
     # The knowledge table should still have only the baseline entry
     final_count = db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
     assert final_count == baseline_count, (
         f"Transaction must roll back on FTS failure. "
         f"Expected {baseline_count} rows, got {final_count}"
+    )
+
+    # No orphaned FTS rows should appear either
+    fts_count = db.execute("SELECT COUNT(*) FROM knowledge_fts").fetchone()[0]
+    assert fts_count == baseline_count, (
+        f"FTS rows must stay consistent after rollback. Expected {baseline_count}, got {fts_count}"
     )

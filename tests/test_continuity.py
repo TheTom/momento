@@ -69,13 +69,15 @@ class TestClaudeSavesCodexRestores:
             include_session_state=True,
         )
 
-        assert isinstance(result, str), "retrieve_context should return a string"
-        assert len(result) > 0, "Result should not be empty"
+        assert hasattr(result, "entries"), "retrieve_context should return RestoreResult"
+        assert hasattr(result, "rendered"), "retrieve_context should return RestoreResult"
+        assert isinstance(result.rendered, str), "RestoreResult.rendered should be a string"
+        assert len(result.rendered) > 0, "Rendered result should not be empty"
 
         # All 3 entries should appear in the output
         for content, _, _ in entries_content:
             # Check a distinctive substring from each entry
-            assert content[:30] in result or content[:20] in result, (
+            assert content[:30] in result.rendered or content[:20] in result.rendered, (
                 f"Entry not found in retrieve output: {content[:50]}..."
             )
 
@@ -209,24 +211,30 @@ class TestFullClearRecoveryCycle:
         )
 
         # Step 4: Verify all 4 entries are present
-        assert isinstance(result, str), "retrieve_context should return a rendered string"
-        assert len(result) > 0, "Result should not be empty after saving 4 entries"
+        assert hasattr(result, "rendered"), "retrieve_context should return RestoreResult"
+        assert isinstance(result.rendered, str), "RestoreResult.rendered should be a string"
+        assert len(result.rendered) > 0, "Result should not be empty after saving 4 entries"
 
         # Verify session_state entries appear (Tier 1)
-        assert "AuthService" in result or "auth" in result.lower(), (
+        rendered_lower = result.rendered.lower()
+        assert "AuthService" in result.rendered or "auth" in rendered_lower, (
             "Session state about auth migration should appear in restore"
         )
-        assert "webhook" in result.lower(), (
+        assert "webhook" in rendered_lower, (
             "Session state about webhook fix should appear in restore"
         )
 
         # Verify decision appears (Tier 3)
-        assert "Stripe Checkout" in result or "stripe" in result.lower(), (
+        assert "Stripe Checkout" in result.rendered or "stripe" in rendered_lower, (
             "Decision about Stripe Checkout should appear in restore"
         )
 
         # Verify gotcha appears (Tier 4)
-        assert "payment_intent" in result or "webhook race" in result.lower() or "fulfillment" in result.lower(), (
+        assert (
+            "payment_intent" in result.rendered
+            or "webhook race" in rendered_lower
+            or "fulfillment" in rendered_lower
+        ), (
             "Gotcha about webhook race should appear in restore"
         )
 
@@ -279,27 +287,28 @@ class TestFullClearRecoveryCycle:
 
         # session_state (Tier 1) should appear before decision (Tier 3)
         # and decision should appear before gotcha (Tier 4)
-        session_pos = result.lower().find("auth handler migration")
+        rendered_lower = result.rendered.lower()
+        session_pos = rendered_lower.find("auth handler migration")
         if session_pos == -1:
-            session_pos = result.lower().find("session_state")
+            session_pos = rendered_lower.find("session_state")
 
-        decision_pos = result.lower().find("opaque sessions")
+        decision_pos = rendered_lower.find("opaque sessions")
         if decision_pos == -1:
-            decision_pos = result.lower().find("decision")
+            decision_pos = rendered_lower.find("decision")
 
-        gotcha_pos = result.lower().find("webhook ordering")
+        gotcha_pos = rendered_lower.find("webhook ordering")
         if gotcha_pos == -1:
-            gotcha_pos = result.lower().find("gotcha")
+            gotcha_pos = rendered_lower.find("gotcha")
 
         # At minimum, verify all sections exist in the output
         # (Specific position checks depend on rendering format)
-        assert session_pos >= 0 or "auth" in result.lower(), (
+        assert session_pos >= 0 or "auth" in rendered_lower, (
             "Session state should appear in restore output"
         )
-        assert decision_pos >= 0 or "opaque" in result.lower() or "jwt" in result.lower(), (
+        assert decision_pos >= 0 or "opaque" in rendered_lower or "jwt" in rendered_lower, (
             "Decision should appear in restore output"
         )
-        assert gotcha_pos >= 0 or "webhook" in result.lower(), (
+        assert gotcha_pos >= 0 or "webhook" in rendered_lower, (
             "Gotcha should appear in restore output"
         )
 

@@ -8,6 +8,7 @@ import time
 
 import pytest
 
+from momento.retrieve import retrieve_context
 from momento.surface import detect_surface
 
 
@@ -154,24 +155,21 @@ def test_performance_at_scale(db):
     count = db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
     assert count == 5000, f"Expected 5000 entries, got {count}"
 
-    # Measure detect_surface (the core function) at scale — many calls
-    paths = [
-        "/code/app/server/handlers",
-        "/code/app/ios/screens",
-        "/code/app/web/components",
-        "/code/app/lib/utils",
-        "/code/app/observer/metrics",
-    ]
-
+    # Measure restore retrieval latency at this scale.
     start = time.perf_counter()
-    for _ in range(1000):
-        for path in paths:
-            detect_surface(path)
+    result = retrieve_context(
+        conn=db,
+        project_id=MOCK_PROJECT_ID,
+        branch="main",
+        surface="server",
+        query=None,
+        include_session_state=True,
+    )
     elapsed_ms = (time.perf_counter() - start) * 1000
 
-    # 5000 detect_surface calls should be well under 500ms
+    assert result is not None, "retrieve_context should return a result"
     assert elapsed_ms < 500, (
-        f"5000 detect_surface calls took {elapsed_ms:.1f}ms (limit: 500ms)"
+        f"retrieve_context on 5000-entry project took {elapsed_ms:.1f}ms (limit: 500ms)"
     )
 
 

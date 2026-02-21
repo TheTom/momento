@@ -112,8 +112,8 @@ GOTCHAS = [
         "not WhenUnlocked. WhenUnlocked breaks background refresh and silent push handling."
     ),
     (
-        "PostgreSQL NOTIFY/LISTEN: connection pool must reserve one connection for the listener. "
-        "If all connections are in the pool, LISTEN channel gets recycled and events are lost."
+        "iOS URLSession background upload callbacks can fire after app relaunch. "
+        "Persist upload state and correlate by taskIdentifier, not in-memory request objects."
     ),
 ]
 
@@ -354,7 +354,7 @@ def make_restore_scenario() -> list[dict]:
     entries.append(make_entry(
         content=GOTCHAS[2],
         type="gotcha",
-        tags=["server", "postgresql", "realtime"],
+        tags=["ios", "networking", "background"],
         branch="main",
         confidence=0.8,
         created_at=days_ago(8),
