@@ -2,259 +2,125 @@
 
 **Deterministic State Recovery for AI Coding Agents**
 
-Momento is a local memory layer that restores context when your AI coding agent forgets. After a `/clear`, session reset, or context overflow, Momento reconstructs the agent's working state in under 2 seconds — decisions made, bugs discovered, tasks in progress, and what comes next.
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Tests: 350 passing](https://img.shields.io/badge/tests-350_passing-brightgreen.svg)](tests/)
 
-SQLite-backed. Works with any AI coding agent.
+---
+
+## The Problem
+
+AI coding agents forget. Every `/clear`, context overflow, or new session wipes the slate. You spend 5-10 minutes re-explaining architecture, decisions, constraints, and the bug you just fixed.
+
+## The Solution
+
+Momento is a local memory layer that restores your agent's working state in under 2 seconds. Decisions made, bugs discovered, tasks in progress, and what comes next -- all reconstructed from a single SQLite database. No cloud. No external dependencies. No magic.
+
+---
+
+## How It Works
+
+After a context reset, the agent calls `retrieve_context()`. Momento returns structured directives -- not chat history, not raw logs, but distilled intent:
+
+```
+retrieve_context(include_session_state=true)
+```
+
+```markdown
+## Active Task
+[session_state | server | feature/billing-rewrite | 10m ago]
+Migrating AuthService to async/await. AuthService.swift and
+AuthViewModel.swift complete. ProfileService and PaymentService
+remain. Hit race condition in TokenManager -- resolved with actor
+isolation.
+
+## Project Knowledge
+
+### Auth Token Refresh [gotcha | server | 3d ago]
+- Always isolate TokenManager in an actor
+- Race condition occurs if refresh overlaps with logout
+- Validate refresh token before mutation
+
+### Keychain Storage [decision | ios | 1d ago]
+- Chose Keychain over UserDefaults -- UserDefaults is not encrypted
+- Wrapped in KeychainManager actor for thread safety
+```
+
+The agent picks up where it left off. You didn't re-explain anything.
+
+---
+
+## Key Features
+
+- **Deterministic 5-tier restore** -- same inputs always produce identical output, no probabilistic scoring
+- **SQLite + FTS5** -- zero external dependencies, single file, BM25 keyword search built in
+- **MCP integration** -- two tools (`retrieve_context`, `log_knowledge`), works with any MCP-compatible agent
+- **10-command CLI** -- full control over your knowledge base from the terminal
+- **Cross-agent continuity** -- Claude Code saves, Codex restores (or any combination)
+- **Surface-aware ranking** -- working in `/server`? Server entries rank first automatically
+- **Branch-aware preference** -- entries from your current branch are preferred, never filtered
+- **Session state decay** -- temporary checkpoints expire; durable knowledge persists forever
 
 ---
 
 ## Quick Start
 
 ```bash
-git clone <repo-url> && cd momento
-./setup.sh
+pipx install .
 momento status
 ```
 
----
-
-## Installation
-
-### Automated (Recommended)
+For full setup including MCP server registration and agent adapters:
 
 ```bash
-./setup.sh            # Standard install via pipx
-./setup.sh --check    # Verify existing installation
-```
-
-### Manual
-
-```bash
-pipx install .
-# for local development from repo checkout:
-pipx install --force .
-```
-
-### Uninstall
-
-```bash
-./setup.sh --uninstall        # Interactive: confirms each step
-./setup.sh --uninstall --yes  # Non-interactive: removes everything except data
-```
-
-Removes: pipx package, MCP config, CLAUDE.md adapter, .codex\_instructions.md.
-
-To also remove your knowledge database:
-
-```bash
-rm -rf ~/.momento
+./setup.sh
 ```
 
 ### Requirements
 
 - Python 3.11+
 - pipx
-- Runtime dependency: `mcp>=1.0`
-- Dev: pytest >= 8.0, pytest-xdist >= 3.5
-
-### Verify
-
-```bash
-momento status          # Should show project info
-pytest tests/ -q        # Should show all tests passing
-```
+- Runtime: `mcp>=1.0`
 
 ---
 
-## CLI Reference
+## CLI Overview
 
-All commands auto-detect your project, branch, and surface from the current working directory.
+| Command | Description |
+|---------|-------------|
+| `momento status` | Project health: entry counts, DB size, last checkpoint age |
+| `momento last` | Show the most recent entry |
+| `momento save "<msg>"` | Quick session checkpoint (auto-detects project, branch, surface) |
+| `momento log "<msg>" --type <type>` | Log any entry with explicit type control |
+| `momento undo` | Delete the most recent entry (with confirmation) |
+| `momento inspect` | Browse the knowledge base with filters |
+| `momento prune` | Delete entries by ID, filter, or auto-prune |
+| `momento search "<query>"` | Full-text keyword search (FTS5 BM25) |
+| `momento ingest` | Import from Claude Code session logs |
+| `momento debug-restore` | Show restore tier breakdown for debugging |
 
-**Global flags:**
-- `--db <path>` — Override database path (default: `~/.momento/knowledge.db`)
-- `--dir <path>` — Override working directory for project detection (default: `.`)
-
-### `momento status`
-
-Show project health: entry counts by type, DB size, last checkpoint age.
-
-```bash
-momento status
-```
-
-### `momento last`
-
-Show the most recent entry for the current project.
-
-```bash
-momento last
-```
-
-### `momento save "<content>"`
-
-Quick session checkpoint. Type is always `session_state`. Surface and branch are auto-detected.
-
-```bash
-momento save "Migrated AuthService to async. Next: update payment handlers."
-momento save "Fixed race condition in TokenManager" --tags auth,concurrency
-momento save "Billing checkout working" --surface server
-```
-
-| Flag | Description |
-|------|-------------|
-| `--tags <csv>` | Comma-separated tags (auto-includes detected surface) |
-| `--surface <name>` | Override auto-detected surface |
-
-### `momento log "<content>" --type <type>`
-
-Log any knowledge entry with explicit type control.
-
-```bash
-momento log "Chose Stripe Checkout over Elements for PCI scope reduction" \
-  --type decision --tags billing,stripe
-
-momento log "iOS Keychain: kSecAttrAccessible must be WhenUnlocked for background refresh" \
-  --type gotcha --tags ios,keychain
-
-momento log "All API endpoints: validate -> authorize -> execute -> respond" \
-  --type pattern --tags api,server
-```
-
-| Flag | Description |
-|------|-------------|
-| `--type <type>` | **Required.** One of: `session_state`, `decision`, `plan`, `gotcha`, `pattern` |
-| `--tags <csv>` | Comma-separated tags |
-
-### `momento undo`
-
-Delete the most recent entry from the current project. Prompts for confirmation.
-
-```bash
-momento undo                    # Most recent entry of any type
-momento undo --type=decision    # Most recent decision specifically
-```
-
-### `momento inspect`
-
-Browse the knowledge base with filters.
-
-```bash
-momento inspect                      # All entries, current project
-momento inspect --all                # All entries, all projects
-momento inspect --type gotcha        # Filter by entry type
-momento inspect --tags auth          # Filter by tag
-momento inspect <entry-id>           # Full detail of a single entry
-```
-
-### `momento prune`
-
-Delete entries by ID, filter, or auto-prune.
-
-```bash
-momento prune <entry-id>                          # Delete specific entry
-momento prune --type session_state --older-than 30d  # Filter by type + age
-momento prune --auto                              # Auto-prune session_state >7d + overflow
-```
-
-### `momento search "<query>"`
-
-Full-text keyword search via FTS5 (BM25 ranking), scoped to the current project plus global (`project_id = NULL`) entries. No tier ordering — pure relevance.
-
-```bash
-momento search "keychain race condition"
-momento search "stripe webhook idempotency"
-```
-
-### `momento ingest [files...]`
-
-Ingest knowledge from Claude Code session logs or explicit JSONL files. Three modes:
-
-```bash
-momento ingest                          # Current project's session logs
-momento ingest --all                    # All known Claude Code projects
-momento ingest session1.jsonl file2.jsonl  # Explicit JSONL files
-```
-
-Session log ingestion extracts compaction summaries and error+resolution pairs. A keyword heuristic filter keeps only entries with actionable insight (e.g., contains "decided", "bug", "avoid", "pattern").
-
-Partial failures don't crash the run. Summary shows files processed, skipped, entries stored, duplicates skipped.
-
-### `momento debug-restore`
-
-Show the restore tier breakdown for debugging. Displays which entries land in which tier, token estimates, and what gets included vs skipped.
-
-```bash
-momento debug-restore
-momento debug-restore --surface server
-```
+See [docs/reference.md](docs/reference.md) for full CLI reference with all flags and examples.
 
 ---
 
-## MCP Server
+## MCP Integration
 
-Momento exposes two MCP tools for AI coding agents. The server is stateless — each call auto-resolves project, branch, and surface from the working directory.
+Momento exposes two MCP tools. The server is stateless -- each call auto-resolves project, branch, and surface from the working directory.
 
-### Setup
+| Tool | Purpose |
+|------|---------|
+| `retrieve_context` | Restore mode (empty query) or FTS5 search mode (with query) |
+| `log_knowledge` | Store a knowledge entry with type, content, and tags |
 
-Register Momento as an MCP server (handled automatically by `./setup.sh`):
+Setup is handled by `./setup.sh`, which registers Momento in `~/.claude.json` with the absolute path to `momento-mcp`.
 
-**Claude Code** (`~/.claude.json` — NOT `~/.claude/settings.json`):
-```json
-{
-  "mcpServers": {
-    "momento": {
-      "command": "/Users/you/.local/bin/momento-mcp",
-      "args": [],
-      "env": {
-        "PYTHONUNBUFFERED": "1"
-      }
-    }
-  }
-}
-```
-
-> **Note:** `setup.sh` automatically resolves the absolute path to `momento-mcp` and writes it to `~/.claude.json`. Using the absolute path ensures Claude Code finds the binary regardless of its shell PATH.
-
-### Tools
-
-#### `retrieve_context`
-
-Retrieve relevant knowledge for the current project. Two modes:
-- **Restore mode** (empty query): Deterministic 5-tier state reconstruction
-- **Search mode** (query provided): FTS5 keyword search
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `query` | string | `""` | Search query. Empty = restore mode. |
-| `include_session_state` | boolean | `true` | Include in-progress task checkpoints. |
-
-#### `log_knowledge`
-
-Store a knowledge entry.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `content` | string | Yes | The knowledge to store. Be concise and actionable. |
-| `type` | string | Yes | One of: `session_state`, `decision`, `plan`, `gotcha`, `pattern` |
-| `tags` | array | Yes | Domain tags. E.g. `["auth", "ios", "keychain"]` |
-
-### Running Manually
-
-```bash
-momento-mcp    # Starts stdio MCP server
-```
-
-### Agent Adapters
-
-Setup script can generate instruction files for:
-- **Claude Code**: Appends checkpoint/retrieval rules to `~/.claude/CLAUDE.md`
-- **Codex**: Generates `.codex_instructions.md` in your project root
+See [docs/reference.md](docs/reference.md) for MCP setup details and tool schemas.
 
 ---
 
 ## How Restore Works
 
-When an agent loses context, Momento runs a **deterministic 5-tier state reconstruction**. Same inputs always produce identical output.
+When an agent loses context, Momento runs a deterministic 5-tier state reconstruction. Same inputs always produce identical output.
 
 | Tier | Type | Quota | Window | Purpose |
 |------|------|-------|--------|---------|
@@ -264,150 +130,35 @@ When an agent loses context, Momento runs a **deterministic 5-tier state reconst
 | 4 | `gotcha` + `pattern` | 4 combined | All time | What have we learned? |
 | 5 | Cross-project | 2 | All time | Solved this elsewhere? |
 
-### Sorting within each tier
+Within each tier, entries are sorted by: **surface match > branch match > recency > id** (fully deterministic, no implicit ordering).
 
-```
-surface_match DESC    -- entries tagged with your current surface first
-branch_match DESC     -- entries from your current branch second
-created_at DESC       -- then most recent
-id ASC                -- stable tie-breaker
-```
-
-**Tier 3 exception:** Decisions sort by `confidence DESC` between `branch_match` and `created_at`, so high-confidence decisions surface first regardless of recency.
-
-### Token budget
-
-- **2000 tokens** total (estimated as `len(rendered_text) / 4`)
-- Greedy fill: add entries until budget exhausted
-- Never truncates mid-entry — include fully or skip entirely
-- Tiers are processed in order; budget remaining flows to next tier
-
-### Cross-project (Tier 5)
-
-Only includes entries from other projects when their tags overlap with your current project's tags. Respects per-type quotas globally (a cross-project decision counts against the decision quota of 3).
-
----
-
-## Entry Types & Size Limits
-
-Size limits are enforced on MCP calls to force compression. CLI bypasses limits for manual entries.
-
-| Type | Limit | What to include |
-|------|-------|-----------------|
-| `session_state` | 500 chars | Current task + what changed + next step |
-| `decision` | 800 chars | What was decided + why + what was rejected |
-| `plan` | 800 chars | Phases + current status + key rationale |
-| `gotcha` | 400 chars | One pitfall + one fix. Be specific. |
-| `pattern` | 400 chars | One convention + one example. |
-
----
-
-## Surface Detection
-
-Surface is detected from **mapped directory keywords** in the path under the git root. Only recognized keywords produce a surface — unmapped directories return `null`.
-
-| Directory Keyword | Surface |
-|-------------------|---------|
-| `server`, `backend` | `server` |
-| `web`, `frontend` | `web` |
-| `ios` | `ios` |
-| `android` | `android` |
-
-```
-/Users/tom/myproject/server/api/routes.py    →  surface = "server"
-/Users/tom/myproject/backend/jobs/worker.py  →  surface = "server"
-/Users/tom/myproject/frontend/app/page.tsx   →  surface = "web"
-/Users/tom/myproject/ios/Sources/App.swift   →  surface = "ios"
-/Users/tom/myproject/src/main.py             →  surface = null (unmapped)
-/Users/tom/myproject/                        →  surface = null (at root)
-```
-
-**Rules:**
-- Scans all path segments under git root for mapped keywords
-- Case-insensitive (`/Server` → `server`, `/FrontEnd` → `web`)
-- Hidden directories (starting with `.`) are skipped
-- At project root → `null` (no surface preference applied)
-- Surface is a preference signal for ranking, never a filter
-
----
-
-## Project Identity
-
-Momento derives your project ID automatically. You never type it.
-
-| Priority | Method | Survives |
-|---|---|---|
-| 1 | `SHA256(git remote origin URL)` | Folder moves, re-clones, multi-machine |
-| 2 | `SHA256(git common dir path)` | Worktrees share same ID |
-| 3 | `SHA256(absolute path)` | Non-git directories |
-
-Branch: `git branch --show-current` (case-sensitive, `None` for detached HEAD).
-
----
-
-## Best Practices
-
-### When to save `session_state`
-- After completing a significant subtask
-- Before `/clear` or `/compact`
-- Before risky operations (large refactor, branch switch)
-- Keep it short: current task + what's next
-
-### When to log `decision`
-- After finalizing an architectural choice
-- Include what was chosen, why, and what was rejected
-
-### When to log `gotcha`
-- After resolving a tricky bug or discovering a constraint
-- One pitfall + one fix, be specific
-
-### When to log `pattern`
-- After establishing a recurring convention
-- One convention + one example
-
-### Tag conventions
-- **Surfaces:** mapped directory keywords (`server`/`backend`, `web`/`frontend`, `ios`, `android`)
-- **Domains:** `auth`, `billing`, `networking`, `persistence`
-- **Infrastructure:** `database`, `docker`, `ci-cd`
-- Tags are auto-normalized: lowercased, trimmed, deduplicated, sorted alphabetically
+Token budget: 2000 tokens. Never truncates mid-entry -- include fully or skip entirely. Tiers are processed in order; budget flows to the next tier.
 
 ---
 
 ## Configuration
 
 | Variable | Default | Description |
-|---|---|---|
+|----------|---------|-------------|
 | `MOMENTO_DB` | `~/.momento/knowledge.db` | Override database path |
 
-### Default locations
+Default locations:
 - Database: `~/.momento/knowledge.db`
 - Ingestion source: `~/.claude/projects/` (Claude Code session logs)
 
 ---
 
-## Architecture
+## Documentation
 
-### Why SQLite + FTS5
-- Zero external dependencies — ships with Python
-- Single file — portable, easy to backup
-- WAL mode — concurrent reads, crash-safe writes
-- FTS5 — BM25 keyword search built in
-- `busy_timeout=5000` — handles concurrent agent access
-
-### Why deterministic
-- `retrieve_context()` called twice with same state = identical output
-- No probabilistic scoring, no ML, no embeddings (v0.1)
-- Retrieval count is analytics-only — never affects ranking
-- Hard-coded tier ordering — not learned, not adaptive
-
-### Restore vs Search
-- **Restore** (`query=None`): State reconstruction. Hard-coded tiers. Surface + branch preference. For session recovery.
-- **Search** (`query="..."`): Keyword search. Pure FTS5 BM25 ranking. No restore preference. For intentional queries.
-
-### Deduplication
-- SHA256 content hash per project scope
-- Same content in different projects = allowed
-- `COALESCE(project_id, '__global__')` handles NULL project_id in unique index
+| Document | Description |
+|----------|-------------|
+| [Reference](docs/reference.md) | Full CLI reference, MCP setup, entry types, surface detection, troubleshooting |
+| [Architecture](docs/momento-architecture.html) | Interactive architecture visualization |
+| [PRD](docs/prd-momento-final-v2.md) | Product requirements document (v0.1 shipped) |
+| [Test Plan](docs/momento-v1-tests.md) | Acceptance tests and pre-flight review |
+| [User Journeys](docs/prd-momento-user-journeys.md) | Core user journey definitions |
+| [FAQ](docs/momento-faq.md) | Frequently asked questions |
+| [Docs Index](docs/README.md) | Full documentation index |
 
 ---
 
@@ -416,16 +167,9 @@ Branch: `git branch --show-current` (case-sensitive, `None` for detached HEAD).
 ### Run tests
 
 ```bash
-pytest tests/ -v                    # Full suite
+pytest tests/ -v                    # Full suite (350 tests)
 pytest tests/ -m must_pass -v       # Ship-blocking tests only
 pytest tests/ -m should_pass -v     # Fix-within-days tests
-```
-
-### Coverage
-
-```bash
-pytest tests/ --cov=momento --cov-branch --cov-report=term-missing
-# Current: 350 tests passing
 ```
 
 ### Project structure
@@ -437,12 +181,12 @@ src/momento/
   db.py             # Schema, WAL, FTS5 triggers, migrations
   identity.py       # Git-based project resolution
   ingest.py         # JSONL batch ingestion + session log extraction
-  mcp_server.py     # MCP server (retrieve_context, log_knowledge) + momento-mcp entry point
+  mcp_server.py     # MCP server (retrieve_context, log_knowledge)
   models.py         # Entry/RestoreResult dataclasses, SIZE_LIMITS
   retrieve.py       # 5-tier restore + FTS5 search
-  setup_utils.py    # MCP registration, CLAUDE.md adapter, Codex adapter (atomic JSON writes)
+  setup_utils.py    # MCP registration, CLAUDE.md adapter, Codex adapter
   store.py          # Write path with dedup + size validation
-  surface.py        # Surface detection (mapped keywords: server/backend/web/frontend/ios/android)
+  surface.py        # Surface detection (mapped keywords)
   tags.py           # Tag normalization (lowercase, sort, dedup)
   tokens.py         # Token estimation (len/4)
 
@@ -460,8 +204,8 @@ tests/
   test_restore.py   # Core restore contract (50+ tests)
   test_schema.py
   test_search.py
-  test_setup_sh.py  # Integration tests for setup.sh flags and sandboxed uninstall
-  test_setup_utils.py  # Unit tests for MCP registration, adapters, atomic writes
+  test_setup_sh.py  # Integration tests for setup.sh
+  test_setup_utils.py
   test_size_limits.py
   test_store.py
   test_surface.py
@@ -470,46 +214,11 @@ tests/
 
 ---
 
-## What Momento Is NOT
-
-- **Not a chat history viewer** — stores distilled knowledge, not transcripts
-- **Not a second brain** — use Obsidian/Notion for that
-- **Not autonomous** — developer controls what's logged and retrieved
-- **Not a branch isolation system** — memory is ranked by branch, not partitioned
-- **Not a code search tool** — stores reasoning about code, not code itself
-- **Not a collaboration tool** — single developer in v0.1
-
----
-
-## Troubleshooting
-
-### Database corrupted
-```bash
-rm ~/.momento/knowledge.db
-# Momento recreates it on next use
-```
-
-### Entries not appearing in restore
-```bash
-momento debug-restore    # Shows tier breakdown and skip reasons
-```
-
-### Search returns nothing
-FTS5 is keyword-based. Try exact terms from entry content. For tag-based lookup, use `momento inspect --tags <tag>`.
-
-### CLI or MCP command not found after install
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-# and restart your shell if needed
-```
-
----
-
 ## Roadmap
 
 | Version | Focus |
-|---|---|
-| **v0.1** | Core restore, CLI, FTS5 search (current) |
+|---------|-------|
+| **v0.1** | Core restore, CLI, FTS5 search **(shipped)** |
 | v0.2 | Session tracking, CLAUDE.md export, watchdog |
 | v0.3 | Vector embeddings (hybrid BM25 + semantic), multi-editor adapters |
 | v0.4 | CI promotion, retrieval analytics |
@@ -518,4 +227,10 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ---
 
-*Momento — When your AI forgets, memory remains.*
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE) for details.
+
+---
+
+*Momento -- When your AI forgets, memory remains.*

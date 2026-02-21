@@ -150,6 +150,27 @@ register_mcp_server() {
         || warn "Could not update $settings_file"
 }
 
+register_codex_mcp_server() {
+    local mcp_cmd
+    mcp_cmd="$(command -v momento-mcp || true)"
+
+    if [[ -z "$mcp_cmd" ]]; then
+        warn "Cannot register Codex MCP server: momento-mcp not on PATH"
+        return 1
+    fi
+
+    if ! command -v codex &>/dev/null; then
+        warn "Codex CLI not found; skipping Codex MCP registration"
+        return 1
+    fi
+
+    # Replace existing server config idempotently.
+    codex mcp remove momento >/dev/null 2>&1 || true
+    codex mcp add momento --env PYTHONUNBUFFERED=1 -- "$mcp_cmd" >/dev/null 2>&1 \
+        && ok "Registered MCP server in Codex (~/.codex/config.toml)" \
+        || warn "Could not register Codex MCP server"
+}
+
 add_claude_adapter() {
     local claude_md="$HOME/.claude/CLAUDE.md"
     local py="${PIPX_PYTHON:-$PYTHON}"
@@ -178,6 +199,11 @@ setup_mcp_integration() {
     # --- Register MCP server in Claude Code ---
     if confirm "Register Momento as an MCP server in Claude Code? [Y/n]"; then
         register_mcp_server
+    fi
+
+    # --- Register MCP server in Codex ---
+    if confirm "Register Momento as an MCP server in Codex? [Y/n]"; then
+        register_codex_mcp_server
     fi
 
     # --- Add adapter instructions to CLAUDE.md ---
@@ -263,6 +289,15 @@ do_uninstall() {
                 "$py" -m momento.setup_utils remove_codex_adapter "./.codex_instructions.md" 2>/dev/null \
                     && ok "Removed .codex_instructions.md" \
                     || warn "Could not remove .codex_instructions.md"
+            fi
+        fi
+
+        # Remove Codex MCP server registration
+        if command -v codex &>/dev/null; then
+            if confirm "Remove Momento MCP server from Codex config? [Y/n]"; then
+                codex mcp remove momento >/dev/null 2>&1 \
+                    && ok "Removed MCP server from Codex (~/.codex/config.toml)" \
+                    || warn "Could not remove Codex MCP server (may not be registered)"
             fi
         fi
 

@@ -51,6 +51,7 @@ def _run_setup(
     tmp_project: Path,
     *,
     stdin=None,
+    extra_env: dict[str, str] | None = None,
     timeout: int = 30,
 ) -> subprocess.CompletedProcess:
     """Run sandboxed setup.sh with isolated HOME and project directory."""
@@ -59,6 +60,8 @@ def _run_setup(
         "HOME": str(tmp_home),
         "PYTHONPATH": SRC_DIR + os.pathsep + os.environ.get("PYTHONPATH", ""),
     }
+    if extra_env:
+        env.update(extra_env)
 
     return subprocess.run(
         ["bash", str(tmp_project / "setup.sh"), *args],
@@ -235,3 +238,86 @@ class TestSetupShFlags:
         _run_setup(["--uninstall", "--yes"], tmp_home, tmp_project)
 
         assert venv_dir.exists()
+
+    @pytest.mark.should_pass
+    def test_install_and_uninstall_invoke_codex_mcp_cli(self, tmp_path):
+        """setup.sh uses codex mcp add/remove when Codex CLI is available."""
+        tmp_home, tmp_project = _make_sandbox(tmp_path)
+
+        # Fake codex CLI that records mcp add/remove calls.
+        fake_bin = tmp_path / "bin"
+        fake_bin.mkdir()
+        codex_log = tmp_path / "codex_calls.log"
+        fake_codex = fake_bin / "codex"
+        fake_codex.write_text(
+            "#!/usr/bin/env bash\n"
+            "echo \"$@\" >> \"$CODEX_LOG\"\n"
+            "if [[ \"$1\" == \"mcp\" && \"$2\" == \"add\" ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"$1\" == \"mcp\" && \"$2\" == \"remove\" ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 0\n"
+        )
+        fake_codex.chmod(0o755)
+
+        # Fake pipx and Python bits so install path can run in isolation.
+        fake_pipx = fake_bin / "pipx"
+        fake_pipx.write_text(
+            "#!/usr/bin/env bash\n"
+            "if [[ \"$1\" == \"install\" ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"$1\" == \"environment\" ]]; then\n"
+            "  echo \"$HOME/.local/pipx/venvs\"\n"
+            "  exit 0\n"
+            "fi\n"
+            "if [[ \"$1\" == \"uninstall\" ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 0\n"
+        )
+        fake_pipx.chmod(0o755)
+
+        fake_momento = fake_bin / "momento"
+        fake_momento.write_text(
+            "#!/usr/bin/env bash\n"
+            "if [[ \"$1\" == \"status\" ]]; then exit 0; fi\n"
+            "exit 0\n"
+        )
+        fake_momento.chmod(0o755)
+
+        fake_momento_mcp = fake_bin / "momento-mcp"
+        fake_momento_mcp.write_text("#!/usr/bin/env bash\nexit 0\n")
+        fake_momento_mcp.chmod(0o755)
+
+        # Stub setup_utils calls used by setup.sh.
+        pipx_py = tmp_home / ".local" / "pipx" / "venvs" / "momento" / "bin"
+        pipx_py.mkdir(parents=True, exist_ok=True)
+        py3 = pipx_py / "python3"
+        py3.write_text(
+            "#!/usr/bin/env bash\n"
+            "if [[ \"$1\" == \"-m\" && \"$2\" == \"momento.setup_utils\" ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 0\n"
+        )
+        py3.chmod(0o755)
+
+        env = {
+            "PATH": str(fake_bin) + os.pathsep + os.environ.get("PATH", ""),
+            "CODEX_LOG": str(codex_log),
+        }
+
+        install_result = _run_setup(["--yes"], tmp_home, tmp_project, extra_env=env)
+        assert install_result.returncode == 0
+
+        uninstall_result = _run_setup(
+            ["--uninstall", "--yes"], tmp_home, tmp_project, extra_env=env
+        )
+        assert uninstall_result.returncode == 0
+
+        calls = codex_log.read_text()
+        assert "mcp add momento" in calls
+        assert "mcp remove momento" in calls
