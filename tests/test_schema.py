@@ -9,7 +9,7 @@ import sqlite3
 
 import pytest
 
-from momento.db import ensure_db
+from momento.db import ensure_db, run_migrations
 
 
 # ---------------------------------------------------------------------------
@@ -283,4 +283,18 @@ def test_schema_fts5_triggers_exist(db_path):
         "AFTER UPDATE trigger 'knowledge_au' must exist"
     )
 
+    conn.close()
+
+
+def test_run_migrations_noop_when_current_version_is_latest(db_path):
+    """run_migrations is a no-op when current_version >= schema version."""
+    conn = ensure_db(db_path)
+    before = conn.execute(
+        "SELECT value FROM momento_meta WHERE key = 'schema_version'"
+    ).fetchone()[0]
+    run_migrations(conn, 1)
+    after = conn.execute(
+        "SELECT value FROM momento_meta WHERE key = 'schema_version'"
+    ).fetchone()[0]
+    assert before == after == "1"
     conn.close()

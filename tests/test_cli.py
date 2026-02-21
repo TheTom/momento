@@ -12,7 +12,20 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from momento.cli import main as cli_main, cmd_save
+from momento.cli import (
+    main as cli_main,
+    cmd_save,
+    cmd_status,
+    cmd_log,
+    cmd_undo,
+    cmd_inspect,
+    cmd_prune,
+    cmd_search,
+    cmd_debug_restore,
+    cmd_ingest,
+    _format_age,
+    _get_db_path,
+)
 from momento.store import log_knowledge
 from momento.db import ensure_db
 from momento.retrieve import retrieve_context
@@ -531,3 +544,469 @@ class TestMomentoDebugRestore:
         # - included/skipped status
         # - token estimates
         # - total budget used
+
+
+# ===========================================================================
+# NEW: Direct cmd_* function tests for coverage
+# ===========================================================================
+
+
+class TestGetDbPath:
+    """Cover _get_db_path (line 28)."""
+
+    def test_get_db_path_default(self, monkeypatch):
+        monkeypatch.delenv("MOMENTO_DB", raising=False)
+        path = _get_db_path()
+        assert "momento" in path.lower() or "knowledge" in path.lower()
+
+    def test_get_db_path_from_env(self, monkeypatch):
+        monkeypatch.setenv("MOMENTO_DB", "/tmp/custom.db")
+        assert _get_db_path() == "/tmp/custom.db"
+
+
+class TestFormatAge:
+    """Cover _format_age (lines 33-43)."""
+
+    def test_format_age_days(self):
+        ts = days_ago(3)
+        result = _format_age(ts)
+        assert "3d ago" == result
+
+    def test_format_age_hours(self):
+        ts = hours_ago(5)
+        result = _format_age(ts)
+        assert "h ago" in result
+
+    def test_format_age_minutes(self):
+        ts = minutes_ago(15)
+        result = _format_age(ts)
+        assert "m ago" in result
+
+
+class TestCmdStatusDirect:
+    """Cover cmd_status function (lines 49-84)."""
+
+    def test_status_output_with_entries(self, db, db_path, capsys, monkeypatch):
+        """cmd_status prints project name, counts, checkpoint, DB size."""
+        monkeypatch.setenv("MOMENTO_DB", db_path)
+        _populate_status_db(db)
+        args = SimpleNamespace()
+        cmd_status(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert MOCK_PROJECT_NAME in out
+        assert "main" in out
+        assert "Entries: 5" in out
+        assert "session_state: 2" in out
+        assert "decision: 2" in out
+        assert "gotcha: 1" in out
+        assert "bytes" in out
+        # Last checkpoint should show age, not "none"
+        assert "Last checkpoint:" in out
+        assert "none" not in out
+
+    def test_status_no_checkpoint(self, db, db_path, capsys, monkeypatch):
+        """cmd_status with no session_state prints 'Last checkpoint: none'."""
+        monkeypatch.setenv("MOMENTO_DB", db_path)
+        entry = make_entry(
+            content="A decision only.",
+            type="decision",
+            tags=["arch"],
+            branch="main",
+            created_at=days_ago(1),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace()
+        cmd_status(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Last checkpoint: none" in out
+
+    def test_status_stale_marker(self, db, db_path, capsys, monkeypatch):
+        """cmd_status marks checkpoint as [STALE] when >1h old."""
+        monkeypatch.setenv("MOMENTO_DB", db_path)
+        entry = make_entry(
+            content="Old checkpoint.",
+            type="session_state",
+            tags=["server"],
+            branch="main",
+            created_at=hours_ago(3),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace()
+        cmd_status(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "[STALE]" in out
+
+    def test_status_detached_branch(self, db, db_path, capsys, monkeypatch):
+        """cmd_status prints '(detached)' when branch is None."""
+        monkeypatch.setenv("MOMENTO_DB", db_path)
+        args = SimpleNamespace()
+        cmd_status(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, None)
+        out = capsys.readouterr().out
+        assert "(detached)" in out
+
+
+class TestCmdLogDirect:
+    """Cover cmd_log (lines 122-140)."""
+
+    def test_log_creates_entry(self, db, capsys):
+        args = SimpleNamespace(content="Some decision made.", type="decision", tags="billing,stripe")
+        cmd_log(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Logged:" in out
+        row = db.execute(
+            "SELECT type, content FROM knowledge WHERE project_id = ?",
+            (MOCK_PROJECT_ID,),
+        ).fetchone()
+        assert row[0] == "decision"
+
+    def test_log_no_tags(self, db, capsys):
+        args = SimpleNamespace(content="A gotcha.", type="gotcha", tags=None)
+        cmd_log(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Logged:" in out
+
+    def test_log_duplicate_skipped(self, db, capsys):
+        """Logging same content twice shows duplicate message."""
+        args = SimpleNamespace(content="Exact same content.", type="decision", tags=None)
+        cmd_log(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        capsys.readouterr()  # clear
+        cmd_log(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Duplicate" in out
+
+
+class TestCmdUndoDirect:
+    """Cover cmd_undo (lines 145-167)."""
+
+    def test_undo_no_entries(self, db, capsys):
+        args = SimpleNamespace()
+        cmd_undo(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "No entries to undo" in out
+
+    def test_undo_confirm_yes(self, db, capsys):
+        entry = make_entry(
+            content="Entry to be undone via confirmation.",
+            type="session_state",
+            tags=["server"],
+            branch="main",
+            created_at=minutes_ago(5),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace()
+        with patch("builtins.input", return_value="y"):
+            cmd_undo(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Deleted:" in out
+        count = db.execute("SELECT COUNT(*) FROM knowledge WHERE project_id = ?", (MOCK_PROJECT_ID,)).fetchone()[0]
+        assert count == 0
+
+    def test_undo_confirm_no(self, db, capsys):
+        entry = make_entry(
+            content="Entry that should survive cancellation.",
+            type="session_state",
+            tags=["server"],
+            branch="main",
+            created_at=minutes_ago(5),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace()
+        with patch("builtins.input", return_value="n"):
+            cmd_undo(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Cancelled" in out
+        count = db.execute("SELECT COUNT(*) FROM knowledge WHERE project_id = ?", (MOCK_PROJECT_ID,)).fetchone()[0]
+        assert count == 1
+
+    def test_undo_shows_preview_and_type(self, db, capsys):
+        entry = make_entry(
+            content="A" * 100,  # >80 chars to trigger truncation
+            type="gotcha",
+            tags=["server"],
+            branch="main",
+            created_at=minutes_ago(2),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace()
+        with patch("builtins.input", return_value="n"):
+            cmd_undo(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "[gotcha]" in out
+        assert "..." in out  # truncated preview
+
+
+class TestCmdInspectDirect:
+    """Cover cmd_inspect (lines 172-191)."""
+
+    def test_inspect_no_entries(self, db, capsys):
+        args = SimpleNamespace()
+        cmd_inspect(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "No entries found" in out
+
+    def test_inspect_shows_entries(self, db, capsys):
+        entries = [
+            make_entry(
+                content="Short content.",
+                type="decision",
+                tags=["billing"],
+                branch="main",
+                created_at=days_ago(1),
+            ),
+            make_entry(
+                content="B" * 80,  # >60 chars to trigger truncation
+                type="gotcha",
+                tags=["server", "stripe"],
+                branch=None,
+                created_at=days_ago(2),
+            ),
+        ]
+        insert_entries(db, entries)
+        args = SimpleNamespace()
+        cmd_inspect(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "[decision]" in out
+        assert "[gotcha]" in out
+        assert "branch=" in out
+        assert "(none)" in out  # None branch
+        assert "..." in out  # truncated content
+
+
+class TestCmdPruneDirect:
+    """Cover cmd_prune (lines 196-219)."""
+
+    def test_prune_without_auto_flag(self, db, capsys):
+        args = SimpleNamespace(auto=False)
+        cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "--auto" in out
+
+    def test_prune_nothing_to_prune(self, db, capsys):
+        """All entries are recent, nothing to prune."""
+        entry = make_entry(
+            content="Recent checkpoint.",
+            type="session_state",
+            tags=["server"],
+            branch="main",
+            created_at=minutes_ago(30),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace(auto=True)
+        cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Nothing to prune" in out
+
+    def test_prune_deletes_old_entries(self, db, capsys):
+        """Prune deletes session_state >7 days old."""
+        entries = [
+            make_entry(
+                content="Recent.",
+                type="session_state",
+                tags=["server"],
+                branch="main",
+                created_at=days_ago(1),
+            ),
+            make_entry(
+                content="Old stale entry.",
+                type="session_state",
+                tags=["server"],
+                branch="main",
+                created_at=days_ago(10),
+            ),
+            make_entry(
+                content="Another old one.",
+                type="session_state",
+                tags=["server"],
+                branch="main",
+                created_at=days_ago(14),
+            ),
+        ]
+        insert_entries(db, entries)
+        args = SimpleNamespace(auto=True)
+        cmd_prune(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Pruned 2" in out
+        remaining = db.execute(
+            "SELECT COUNT(*) FROM knowledge WHERE project_id = ? AND type = 'session_state'",
+            (MOCK_PROJECT_ID,),
+        ).fetchone()[0]
+        assert remaining == 1
+
+
+class TestCmdSearchDirect:
+    """Cover cmd_search (lines 241-257)."""
+
+    def test_search_no_results(self, db, capsys):
+        args = SimpleNamespace(query="nonexistent gibberish term")
+        cmd_search(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "No results found" in out
+
+    def test_search_with_results(self, populated_db, capsys):
+        """Search for 'stripe' should find matching entries."""
+        args = SimpleNamespace(query="stripe webhook")
+        cmd_search(args, populated_db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "feature/billing-rewrite")
+        out = capsys.readouterr().out
+        assert "results" in out
+        assert "tokens" in out
+
+
+class TestCmdDebugRestoreDirect:
+    """Cover cmd_debug_restore (lines 262-287)."""
+
+    def test_debug_restore_output(self, populated_db, capsys):
+        args = SimpleNamespace(surface="server")
+        cmd_debug_restore(args, populated_db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "feature/billing-rewrite")
+        out = capsys.readouterr().out
+        assert "Total:" in out
+        assert "entries" in out
+        assert "tokens" in out
+
+    def test_debug_restore_no_surface(self, populated_db, capsys):
+        args = SimpleNamespace()  # no surface attr
+        cmd_debug_restore(args, populated_db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Total:" in out
+
+    def test_debug_restore_empty_rendered_path(self, db, capsys):
+        """Covers cmd_debug_restore path where result.rendered is empty."""
+        from momento.models import RestoreResult
+
+        args = SimpleNamespace(surface="server")
+        fake = RestoreResult(entries=[], total_tokens=0, rendered="")
+        with patch("momento.retrieve.retrieve_context", return_value=fake):
+            cmd_debug_restore(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Total: 0 entries" in out
+
+
+class TestCmdIngestDirect:
+    """Cover cmd_ingest (lines 224-236)."""
+
+    def test_ingest_no_files(self, db, capsys):
+        args = SimpleNamespace(files=[])
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_ingest(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "No files specified" in err
+
+    def test_ingest_with_files(self, db, capsys, tmp_path):
+        """Ingest a real JSONL file."""
+        jsonl = tmp_path / "test.jsonl"
+        import json as _json
+        line = _json.dumps({
+            "content": "Ingested entry from JSONL.",
+            "type": "decision",
+            "tags": ["server"],
+            "project_id": MOCK_PROJECT_ID,
+            "project_name": MOCK_PROJECT_NAME,
+            "branch": "main",
+            "source_type": "ingest",
+        })
+        jsonl.write_text(line + "\n")
+        args = SimpleNamespace(files=[str(jsonl)])
+        cmd_ingest(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Files:" in out
+        assert "Lines:" in out
+        assert "Stored:" in out
+        assert "Skipped:" in out
+        assert "Dupes:" in out
+
+
+class TestCmdSaveErrorPaths:
+    """Cover cmd_save error/duplicate paths (lines 110-115)."""
+
+    def test_save_duplicate_skipped(self, db, capsys):
+        """Second save of same content prints 'Duplicate entry — skipped.'"""
+        args = SimpleNamespace(
+            content="Identical checkpoint content.",
+            tags=None,
+            surface=None,
+            dir=".",
+        )
+        cmd_save(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        capsys.readouterr()  # clear first output
+        cmd_save(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        out = capsys.readouterr().out
+        assert "Duplicate" in out
+
+
+class TestMainFunction:
+    """Cover main() argparse wiring (lines 296-379)."""
+
+    def test_main_no_command(self, monkeypatch):
+        """main() with no args prints help and exits."""
+        monkeypatch.setattr("sys.argv", ["momento"])
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main()
+        assert exc_info.value.code == 1
+
+    def test_main_status_dispatches(self, db_path, monkeypatch, capsys):
+        """main() with 'status' dispatches to cmd_status."""
+        monkeypatch.setattr("sys.argv", ["momento", "--db", db_path, "status"])
+        # Need a valid git repo for resolve_project_id
+        with patch("momento.cli.resolve_project_id", return_value=(MOCK_PROJECT_ID, MOCK_PROJECT_NAME)):
+            with patch("momento.cli.resolve_branch", return_value="main"):
+                cli_main()
+        out = capsys.readouterr().out
+        assert "Project:" in out
+
+    def test_main_log_dispatches(self, db_path, monkeypatch, capsys):
+        """main() with 'log' dispatches to cmd_log."""
+        monkeypatch.setattr("sys.argv", ["momento", "--db", db_path, "log", "test content", "--type", "decision"])
+        with patch("momento.cli.resolve_project_id", return_value=(MOCK_PROJECT_ID, MOCK_PROJECT_NAME)):
+            with patch("momento.cli.resolve_branch", return_value="main"):
+                cli_main()
+        out = capsys.readouterr().out
+        assert "Logged:" in out
+
+
+class TestCmdSaveErrorWithHint:
+    """Cover cmd_save error+hint path (lines 110-113)."""
+
+    def test_save_error_with_hint(self, db, capsys):
+        """When log_knowledge returns error+hint, both are printed to stderr."""
+        args = SimpleNamespace(content="whatever", tags=None, surface=None, dir=".")
+        mock_result = {"error": "Limit exceeded", "hint": "Try pruning old entries"}
+        with patch("momento.cli.log_knowledge", return_value=mock_result):
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_save(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+            assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "Error: Limit exceeded" in err
+        assert "Hint: Try pruning" in err
+
+    def test_save_error_without_hint(self, db, capsys):
+        """When log_knowledge returns error without hint, only error is printed."""
+        args = SimpleNamespace(content="whatever", tags=None, surface=None, dir=".")
+        mock_result = {"error": "Something went wrong"}
+        with patch("momento.cli.log_knowledge", return_value=mock_result):
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_save(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+            assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "Error: Something went wrong" in err
+        assert "Hint:" not in err
+
+
+class TestCmdLogError:
+    """Cover cmd_log error path (lines 135-136)."""
+
+    def test_log_error(self, db, capsys):
+        """When log_knowledge returns error, it's printed to stderr and exits."""
+        args = SimpleNamespace(content="test", type="decision", tags=None)
+        mock_result = {"error": "DB write failed"}
+        with patch("momento.cli.log_knowledge", return_value=mock_result):
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_log(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+            assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "Error: DB write failed" in err

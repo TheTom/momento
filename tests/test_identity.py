@@ -30,6 +30,31 @@ def test_identity_git_remote_returns_hash_of_remote_url(mock_git_repo):
     assert human_name == "payments-platform"
 
 
+def test_identity_git_remote_without_dot_git_suffix(tmp_path):
+    """Remote URL parsing handles repos without .git suffix."""
+    repo = tmp_path / "repo_no_suffix"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/acme/payments-platform"],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+    )
+    (repo / "README.md").write_text("# Test")
+    subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
+
+    project_id, human_name = resolve_project_id(str(repo))
+    expected_hash = hashlib.sha256(
+        b"https://github.com/acme/payments-platform"
+    ).hexdigest()
+    assert project_id == expected_hash
+    assert human_name == "payments-platform"
+
+
 # ---------------------------------------------------------------------------
 # T1.2 — Git root fallback (no remote)
 # ---------------------------------------------------------------------------

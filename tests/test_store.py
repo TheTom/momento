@@ -4,8 +4,10 @@ Covers T3.1 through T3.10 from the acceptance test spec.
 These are RED tests — they will fail against stub implementations.
 """
 
+import hashlib
 import json
 import re
+import sqlite3
 import uuid
 
 import pytest
@@ -412,3 +414,128 @@ def test_transaction_atomicity(db):
     assert fts_count == baseline_count, (
         f"FTS rows must stay consistent after rollback. Expected {baseline_count}, got {fts_count}"
     )
+
+
+# ---------------------------------------------------------------------------
+# T3.10b — IntegrityError race condition (existing row found on re-check)
+# ---------------------------------------------------------------------------
+
+
+class _ConnProxy:
+    """Proxy wrapper around sqlite3.Connection for intercepting execute calls.
+
+    sqlite3.Connection.execute is read-only in Python 3.13+, so we wrap
+    the connection instead of monkey-patching it.
+    """
+
+    def __init__(self, conn, execute_hook=None):
+        self._conn = conn
+        self._execute_hook = execute_hook
+
+    def execute(self, sql, params=()):
+        if self._execute_hook:
+            result = self._execute_hook(sql, params)
+            if result is not None:
+                return result
+        return self._conn.execute(sql, params)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def test_integrity_error_recheck_finds_existing(db):
+    """store.py line 88: IntegrityError caught, re-query finds the existing row.
+
+    Simulates a race condition where the dedup check misses an existing row,
+    the INSERT fails with IntegrityError (UNIQUE constraint on content_hash),
+    and the re-check finds the row inserted by another writer.
+    """
+    content = "Race condition dedup test content."
+    content_hash = hashlib.sha256(content.encode()).hexdigest()
+    now = "2025-01-01T00:00:00Z"
+    pre_existing_id = str(uuid.uuid4())
+
+    # Pre-insert row directly so content_hash UNIQUE constraint will fire
+    db.execute(
+        """INSERT INTO knowledge
+           (id, content, content_hash, type, tags, project_id,
+            project_name, branch, source_type, confidence,
+            created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (pre_existing_id, content, content_hash, "decision", '["test"]',
+         MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main", "manual", 0.9, now, now),
+    )
+    db.execute(
+        "INSERT INTO knowledge_stats (entry_id, retrieval_count) VALUES (?, 0)",
+        (pre_existing_id,),
+    )
+    db.commit()
+
+    # Hook: make the FIRST dedup SELECT return None (simulating a race miss),
+    # allowing the INSERT to fire and hit the UNIQUE constraint.
+    skip_first_select = [True]
+
+    def hook(sql, params):
+        if (skip_first_select[0]
+                and isinstance(sql, str)
+                and "SELECT id FROM knowledge" in sql
+                and "content_hash" in sql):
+            skip_first_select[0] = False
+
+            class _EmptyCursor:
+                def fetchone(self):
+                    return None
+            return _EmptyCursor()
+        return None  # delegate to real execute
+
+    proxy = _ConnProxy(db, execute_hook=hook)
+    result = log_knowledge(
+        conn=proxy,
+        content=content,
+        type="decision",
+        tags=["test"],
+        project_id=MOCK_PROJECT_ID,
+        project_name=MOCK_PROJECT_NAME,
+        branch="main",
+    )
+
+    assert "error" not in result, f"Should not error: {result}"
+    assert result["status"] == "duplicate_skipped"
+    assert result["id"] == pre_existing_id
+
+
+# ---------------------------------------------------------------------------
+# T3.10c — OperationalError during INSERT
+# ---------------------------------------------------------------------------
+
+
+def test_operational_error_during_insert(db):
+    """store.py lines 90-92: OperationalError during INSERT returns error dict.
+
+    Simulates a database-level failure (e.g., locked DB) during the INSERT
+    transaction. The error should be caught, rolled back, and returned.
+    """
+    def hook(sql, params):
+        if (isinstance(sql, str)
+                and "INSERT INTO knowledge" in sql
+                and "knowledge_stats" not in sql):
+            raise sqlite3.OperationalError("database is locked")
+        return None
+
+    proxy = _ConnProxy(db, execute_hook=hook)
+    result = log_knowledge(
+        conn=proxy,
+        content="This insert should trigger OperationalError.",
+        type="decision",
+        tags=["test"],
+        project_id=MOCK_PROJECT_ID,
+        project_name=MOCK_PROJECT_NAME,
+        branch="main",
+    )
+
+    assert "error" in result, "OperationalError must surface as error dict"
+    assert "database is locked" in result["error"]
+
+    # Nothing inserted
+    count = db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+    assert count == 0, "Rollback must prevent any rows from persisting"

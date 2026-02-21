@@ -297,7 +297,7 @@ def main() -> None:
         prog="momento",
         description="Momento — trust anchors for developers",
     )
-    parser.add_argument("--db", help="Database path (default: ~/.momento/momento.db)")
+    parser.add_argument("--db", help="Database path (default: ~/.momento/knowledge.db)")
     parser.add_argument("--dir", default=".", help="Working directory for project detection")
 
     subparsers = parser.add_subparsers(dest="command")
@@ -369,11 +369,9 @@ def main() -> None:
         "debug-restore": cmd_debug_restore,
     }
 
-    handler = commands.get(args.command)
-    if handler:
+    try:
+        # argparse subcommands guarantee args.command is one of these keys
+        handler = commands[args.command]
         handler(args, conn, project_id, project_name, branch)
-    else:
-        parser.print_help()
-        sys.exit(1)
-
-    conn.close()
+    finally:
+        conn.close()

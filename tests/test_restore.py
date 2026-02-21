@@ -14,7 +14,8 @@ import sqlite3
 
 import pytest
 
-from momento.retrieve import retrieve_context
+from momento.models import Entry
+from momento.retrieve import retrieve_context, _tag_set, _greedy_fill
 from tests.conftest import insert_entry, insert_entries
 from tests.mock_data import (
     MOCK_PROJECT_ID,
@@ -1486,3 +1487,234 @@ class TestT415RetrievalCountInStats:
             "knowledge.updated_at must not change after retrieval — "
             "retrieval_count lives in knowledge_stats only"
         )
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — retrieve.py edge-case branches
+# ---------------------------------------------------------------------------
+
+
+def test_tag_set_with_list_input():
+    """retrieve.py line 49: _tag_set with list input returns set directly.
+
+    When tags is already a list (not a JSON string), _tag_set should
+    convert it to a set without JSON parsing.
+    """
+    result = _tag_set(["auth", "server", "billing"])
+    assert result == {"auth", "server", "billing"}
+    assert isinstance(result, set)
+
+
+def test_tag_set_with_empty_list():
+    """retrieve.py line 49: _tag_set with empty list returns empty set."""
+    result = _tag_set([])
+    assert result == set()
+
+
+def test_greedy_fill_budget_break():
+    """retrieve.py line 72: _greedy_fill breaks when next entry exceeds budget.
+
+    Creates entries where the second entry pushes past the remaining budget.
+    The break on line 72 fires and only the first entry is selected.
+    """
+    entry_a = Entry(
+        id="aaa", content="A" * 200, content_hash="ha", type="decision",
+        tags='["test"]', project_id="p1", project_name="proj",
+        branch="main", source_type="manual", confidence=0.9,
+        created_at="2025-01-01T00:00:00Z", updated_at="2025-01-01T00:00:00Z",
+    )
+    entry_b = Entry(
+        id="bbb", content="B" * 200, content_hash="hb", type="decision",
+        tags='["test"]', project_id="p1", project_name="proj",
+        branch="main", source_type="manual", confidence=0.9,
+        created_at="2025-01-01T00:00:00Z", updated_at="2025-01-01T00:00:00Z",
+    )
+    # Each rendered entry is ~230 chars → ~57 tokens. Budget of 60 fits one.
+    selected, used = _greedy_fill([entry_a, entry_b], 60)
+    assert len(selected) == 1, f"Budget should only allow 1 entry, got {len(selected)}"
+    assert selected[0].id == "aaa"
+    assert used > 0
+
+
+def test_cross_project_gotcha_pattern_skipped_when_quota_full(db):
+    """retrieve.py line 234: cross-project gotcha/pattern skipped when combined quota full.
+
+    Fills the gotcha+pattern combined quota (4) with project entries,
+    then verifies a cross-project gotcha with tag overlap is excluded.
+    """
+    # Fill gotcha+pattern quota (4) with project entries
+    for i in range(4):
+        insert_entry(db, make_entry(
+            content=f"Project gotcha {i+1}: watch for edge case {i+1} in auth flow.",
+            type="gotcha",
+            tags=["server", "auth"],
+            branch="main",
+            created_at=days_ago(i + 1),
+        ))
+
+    # Cross-project gotcha with overlapping "auth" tag — should be skipped
+    insert_entry(db, make_entry(
+        content="Cross-project gotcha: auth token expiry race condition in identity service.",
+        type="gotcha",
+        tags=["auth", "security"],
+        project_id=SECOND_PROJECT_ID,
+        project_name=SECOND_PROJECT_NAME,
+        branch="main",
+        created_at=days_ago(10),
+    ))
+    db.commit()
+
+    result = retrieve_context(
+        db,
+        project_id=MOCK_PROJECT_ID,
+        branch="main",
+        surface="server",
+        query=None,
+    )
+
+    cross_gotchas = [
+        e for e in result.entries
+        if e.project_id == SECOND_PROJECT_ID and e.type in ("gotcha", "pattern")
+    ]
+    assert len(cross_gotchas) == 0, (
+        "Cross-project gotcha/pattern must be excluded when combined quota is full"
+    )
+
+
+def test_search_mode_budget_break(db):
+    """retrieve.py line 286: search mode breaks when token budget exceeded.
+
+    Inserts large searchable entries so the budget is exhausted before all
+    results can be included.
+    """
+    # Insert 15 large entries with searchable content.
+    # Each ~900 chars content → ~240 tokens rendered. 8 entries ≈ 1920 tokens.
+    for i in range(15):
+        insert_entry(db, make_entry(
+            content=(
+                f"Searchable entry {i+1}: comprehensive auth flow documentation. "
+                + "x" * 850
+            ),
+            type="decision",
+            tags=["searchable", "auth"],
+            branch="main",
+            created_at=days_ago(i + 1),
+        ))
+    db.commit()
+
+    result = retrieve_context(
+        db,
+        project_id=MOCK_PROJECT_ID,
+        branch="main",
+        query="Searchable auth",
+    )
+
+    # Budget should cut off before all 15 are included
+    assert len(result.entries) < 15, (
+        f"Budget should limit results, got all {len(result.entries)}"
+    )
+    assert result.total_tokens <= 2100, (
+        f"Search results should respect token budget. Got: {result.total_tokens}"
+    )
+
+
+def test_restore_without_session_state_still_returns_other_tiers(db):
+    """Covers restore branch where include_session_state=False."""
+    insert_entry(db, make_entry(
+        content="Session checkpoint to skip.",
+        type="session_state",
+        tags=["server"],
+        branch="main",
+        created_at=minutes_ago(5),
+    ))
+    insert_entry(db, make_entry(
+        content="Decision should still return.",
+        type="decision",
+        tags=["auth", "server"],
+        branch="main",
+        created_at=days_ago(1),
+    ))
+    db.commit()
+
+    result = retrieve_context(
+        db,
+        project_id=MOCK_PROJECT_ID,
+        branch="main",
+        surface="server",
+        query=None,
+        include_session_state=False,
+    )
+
+    assert any(e.type == "decision" for e in result.entries)
+    assert all(e.type != "session_state" for e in result.entries)
+
+
+def test_cross_project_session_state_candidate_path(db):
+    """Covers cross-project type path outside decision/plan/gotcha/pattern checks."""
+    insert_entry(db, make_entry(
+        content="Project seed tags for auth overlap.",
+        type="decision",
+        tags=["auth", "server"],
+        branch="main",
+        created_at=days_ago(1),
+    ))
+    insert_entry(db, make_entry(
+        content="Cross-project session note.",
+        type="session_state",
+        tags=["auth", "identity"],
+        branch="main",
+        project_id=SECOND_PROJECT_ID,
+        project_name=SECOND_PROJECT_NAME,
+        created_at=days_ago(2),
+    ))
+    db.commit()
+
+    result = retrieve_context(
+        db,
+        project_id=MOCK_PROJECT_ID,
+        branch="main",
+        surface="server",
+        query=None,
+    )
+
+    assert any(
+        e.project_id == SECOND_PROJECT_ID and e.type == "session_state"
+        for e in result.entries
+    )
+
+
+def test_render_restore_cross_project_header_only_once():
+    """Directly covers _render_restore cross-header dedupe branch."""
+    from momento.retrieve import _render_restore
+
+    cross_1 = Entry(
+        id="c1",
+        content="Cross entry one",
+        content_hash="h1",
+        type="decision",
+        tags='["auth"]',
+        project_id=SECOND_PROJECT_ID,
+        project_name=SECOND_PROJECT_NAME,
+        branch="main",
+        source_type="manual",
+        confidence=0.9,
+        created_at=days_ago(1),
+        updated_at=days_ago(1),
+    )
+    cross_2 = Entry(
+        id="c2",
+        content="Cross entry two",
+        content_hash="h2",
+        type="gotcha",
+        tags='["auth"]',
+        project_id=SECOND_PROJECT_ID,
+        project_name=SECOND_PROJECT_NAME,
+        branch="main",
+        source_type="manual",
+        confidence=0.9,
+        created_at=days_ago(2),
+        updated_at=days_ago(2),
+    )
+
+    rendered = _render_restore([cross_1, cross_2], MOCK_PROJECT_ID)
+    assert rendered.count("## Cross-Project") == 1

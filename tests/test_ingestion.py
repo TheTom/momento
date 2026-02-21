@@ -250,3 +250,95 @@ class TestSummaryOutput:
         assert count == 3, "Good file entries should still be ingested"
 
         conn.close()
+
+
+# ===========================================================================
+# Coverage gap tests — ingest.py edge-case branches
+# ===========================================================================
+
+
+class TestIngestCoverageGaps:
+    """Tests targeting specific uncovered lines in ingest.py."""
+
+    def test_blank_lines_skipped_in_jsonl(self, tmp_path):
+        """ingest.py line 38: blank/whitespace-only lines are skipped.
+
+        JSONL files may contain blank lines between entries. These should
+        be silently skipped without incrementing lines_processed.
+        """
+        from momento.ingest import ingest_file
+
+        db_path = str(tmp_path / "test.db")
+        conn = ensure_db(db_path)
+
+        filepath = tmp_path / "blanks.jsonl"
+        lines = [
+            "",                                           # blank
+            _make_valid_jsonl_line("Entry one"),          # valid
+            "   ",                                        # whitespace-only
+            "",                                           # blank
+            _make_valid_jsonl_line("Entry two"),          # valid
+            "\t",                                         # tab-only
+        ]
+        filepath.write_text("\n".join(lines) + "\n")
+
+        result = ingest_file(conn, str(filepath))
+
+        assert result["lines_processed"] == 2, (
+            f"Only non-blank lines should count. Got {result['lines_processed']}"
+        )
+        assert result["entries_stored"] == 2
+        assert result["lines_skipped"] == 0
+
+        conn.close()
+
+    def test_sqlite_error_during_insert_rolls_back(self, tmp_path):
+        """ingest.py lines 93-95: sqlite3.Error during insert triggers rollback.
+
+        Drops knowledge_stats table so the INSERT INTO knowledge_stats
+        raises OperationalError, triggering the except sqlite3.Error path.
+        """
+        from momento.ingest import ingest_file
+
+        db_path = str(tmp_path / "test.db")
+        conn = ensure_db(db_path)
+
+        # Remove knowledge_stats so the stats INSERT fails
+        conn.execute("DROP TABLE knowledge_stats")
+        conn.commit()
+
+        filepath = tmp_path / "error.jsonl"
+        filepath.write_text(
+            _make_valid_jsonl_line("Entry that will fail on stats insert.") + "\n"
+        )
+
+        result = ingest_file(conn, str(filepath))
+
+        # The entry should be skipped (rolled back) due to sqlite3.Error
+        assert result["lines_skipped"] == 1, (
+            f"sqlite3.Error should cause line to be skipped. Got {result['lines_skipped']}"
+        )
+
+        # No rows should persist (rollback undoes the knowledge INSERT)
+        count = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+        assert count == 0, "Rollback should prevent partial inserts"
+
+        conn.close()
+
+    def test_ingest_project_not_implemented(self, tmp_path):
+        """ingest.py line 151: ingest_project raises NotImplementedError."""
+        from momento.ingest import ingest_project
+
+        conn = ensure_db(str(tmp_path / "test.db"))
+        with pytest.raises(NotImplementedError, match="ingest.ingest_project"):
+            ingest_project(conn, "/some/project/dir")
+        conn.close()
+
+    def test_ingest_all_not_implemented(self, tmp_path):
+        """ingest.py line 160: ingest_all raises NotImplementedError."""
+        from momento.ingest import ingest_all
+
+        conn = ensure_db(str(tmp_path / "test.db"))
+        with pytest.raises(NotImplementedError, match="ingest.ingest_all"):
+            ingest_all(conn)
+        conn.close()
