@@ -404,25 +404,25 @@ def render_slack(sections: SnippetSections, meta: SnippetMeta) -> str:
     if meta.empty:
         return prefix + f"{header}\n(no entries for this period)\n"
 
-    lines = [header]
-    max_lines = 15
+    lines = [header, ""]
+    max_items = 15
 
     for entry in sections.accomplished:
-        lines.append(f"\u2705 {_single_line(entry.content)}")
+        lines.append(f"\u2705 {_first_line(entry.content)}")
     for entry in sections.decisions:
-        lines.append(f"\U0001f4cc Decided: {_single_line(entry.content)}")
+        lines.append(f"\U0001f4cc Decided: {_first_line(entry.content)}")
     for entry in sections.discovered:
-        lines.append(f"\u26a0\ufe0f Gotcha: {_single_line(entry.content)}")
+        lines.append(f"\u26a0\ufe0f Gotcha: {_first_line(entry.content)}")
     for entry in sections.in_progress:
-        lines.append(f"\U0001f504 In progress: {_single_line(entry.content)}")
+        lines.append(f"\U0001f504 In progress: {_first_line(entry.content)}")
     for entry in sections.patterns:
-        lines.append(f"\U0001f4d0 Convention: {_single_line(entry.content)}")
+        lines.append(f"\U0001f4d0 Convention: {_first_line(entry.content)}")
 
-    # Enforce max 15 content lines (header doesn't count)
-    content_lines = lines[1:]
-    if len(content_lines) > max_lines:
-        extra = len(content_lines) - max_lines
-        lines = [lines[0]] + content_lines[:max_lines] + [f"(+{extra} more)"]
+    # Enforce max 15 content items (header doesn't count)
+    content_lines = lines[2:]
+    if len(content_lines) > max_items:
+        extra = len(content_lines) - max_items
+        lines = lines[:2] + content_lines[:max_items] + [f"(+{extra} more)"]
 
     return prefix + "\n".join(lines) + "\n"
 

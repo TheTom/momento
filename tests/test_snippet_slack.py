@@ -65,7 +65,8 @@ class TestOneLinePerItem:
 
         # Each content line should be a single line (no \n within entry)
         lines = output.strip().split("\n")
-        for line in lines[1:]:  # Skip header
+        content_lines = [l for l in lines[1:] if l]  # Skip header + blank lines
+        for line in content_lines:
             # The content should have been flattened
             assert "Line one." in line or line.startswith("(")
 
@@ -101,7 +102,7 @@ class TestMaxSlackLines:
             format="slack", project_name=MOCK_PROJECT_NAME,
         )
 
-        lines = output.strip().split("\n")
+        lines = [l for l in output.strip().split("\n") if l]  # non-empty lines
         # Header + max 15 content lines + "(+N more)" line
         assert len(lines) <= 17, f"Expected max 17 lines, got {len(lines)}"
         assert "(+" in output and "more)" in output
