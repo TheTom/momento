@@ -168,8 +168,7 @@ Default locations:
 | [Architecture](docs/momento-architecture.html) | Interactive architecture visualization |
 | [PRD](docs/prd-momento-final-v2.md) | Product requirements document (v0.1 shipped) |
 | [Snippets PRD](docs/prd-momento-snippets.md) | Snippets feature PRD (v0.2) |
-| [Test Plan](docs/momento-v1-tests.md) | v0.1 acceptance tests and pre-flight review |
-| [Snippets Tests](docs/momento-snippets-tests.md) | v0.2 snippets test spec (57 tests, 10 subsystems) |
+| [Test Spec](docs/momento-tests.md) | Consolidated test specification (v0.1 core + v0.2 snippets) |
 | [User Journeys](docs/prd-momento-user-journeys.md) | Core user journey definitions |
 | [FAQ](docs/momento-faq.md) | Frequently asked questions |
 | [Docs Index](docs/README.md) | Full documentation index |
