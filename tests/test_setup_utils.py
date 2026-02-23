@@ -305,6 +305,93 @@ class TestRemoveClaudeAdapter:
 
         assert result is True
 
+    @pytest.mark.should_pass
+    def test_removes_legacy_output_rules_header(self, tmp_path):
+        """Removes adapter even when it starts with legacy '## Momento Output Rules'."""
+        claude_md = tmp_path / "CLAUDE.md"
+        legacy_block = (
+            "# My Project\n\n"
+            "## Momento Output Rules\n\n"
+            "Some old output rules.\n\n"
+            "## Momento Context Recovery\n\n"
+            "Old recovery instructions.\n\n"
+            "Use the Historical Slice structure.\n"
+        )
+        claude_md.write_text(legacy_block)
+
+        result = remove_claude_adapter(str(claude_md))
+
+        assert result is True
+        content = claude_md.read_text()
+        assert "Momento Output Rules" not in content
+        assert "My Project" in content
+
+
+# ---------------------------------------------------------------------------
+# TestUpgradeClaudeAdapter
+# ---------------------------------------------------------------------------
+
+class TestUpgradeClaudeAdapter:
+    """Tests for upgrading legacy adapter → current version."""
+
+    @pytest.mark.must_pass
+    def test_upgrade_replaces_legacy_with_current(self, tmp_path):
+        """add_claude_adapter upgrades old '## Momento Output Rules' to new format."""
+        claude_md = tmp_path / "CLAUDE.md"
+        legacy_block = (
+            "# My Project\n\n"
+            "Existing instructions.\n"
+            "\n## Momento Output Rules\n\n"
+            "Old output rules.\n\n"
+            "## Momento Context Recovery\n\n"
+            "Old recovery stuff.\n\n"
+            "Use the Historical Slice structure.\n"
+        )
+        claude_md.write_text(legacy_block)
+
+        result = add_claude_adapter(str(claude_md))
+
+        assert result is True
+        content = claude_md.read_text()
+        # New header present
+        assert "## Momento — MANDATORY Session Start" in content
+        # Old-style-only header gone (Output Rules still exists but under new block)
+        assert "BEFORE doing ANY work" in content
+        # Existing content preserved
+        assert "Existing instructions." in content
+        # Only one adapter block
+        assert content.count("Use the Historical Slice structure.") == 1
+
+    @pytest.mark.must_pass
+    def test_upgrade_is_idempotent(self, tmp_path):
+        """Running add_claude_adapter twice after upgrade doesn't duplicate."""
+        claude_md = tmp_path / "CLAUDE.md"
+        legacy_block = (
+            "# Project\n"
+            "\n## Momento Output Rules\n\n"
+            "Old stuff.\n\n"
+            "Use the Historical Slice structure.\n"
+        )
+        claude_md.write_text(legacy_block)
+
+        add_claude_adapter(str(claude_md))
+        add_claude_adapter(str(claude_md))
+
+        content = claude_md.read_text()
+        assert content.count("## Momento — MANDATORY Session Start") == 1
+
+    @pytest.mark.must_pass
+    def test_fresh_install_has_mandatory_header(self, tmp_path):
+        """New installs get the MANDATORY Session Start section."""
+        claude_md = tmp_path / "CLAUDE.md"
+
+        add_claude_adapter(str(claude_md))
+
+        content = claude_md.read_text()
+        assert "## Momento — MANDATORY Session Start" in content
+        assert "BEFORE doing ANY work" in content
+        assert "retrieve_context" in content
+
 
 # ---------------------------------------------------------------------------
 # TestGenerateCodexAdapter

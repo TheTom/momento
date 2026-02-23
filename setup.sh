@@ -315,7 +315,7 @@ do_uninstall() {
 
         # Remove CLAUDE.md adapter
         local claude_md="$HOME/.claude/CLAUDE.md"
-        if [[ -f "$claude_md" ]] && grep -q "Momento Context Recovery" "$claude_md" 2>/dev/null; then
+        if [[ -f "$claude_md" ]] && grep -qE "Momento (— MANDATORY Session Start|Output Rules|Context Recovery)" "$claude_md" 2>/dev/null; then
             if confirm "Remove Momento adapter from $claude_md? [Y/n]"; then
                 "$py" -m momento.setup_utils remove_claude_adapter "$claude_md" 2>/dev/null \
                     && ok "Removed Momento adapter from $claude_md" \

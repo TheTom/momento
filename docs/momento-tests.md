@@ -1,6 +1,6 @@
 # Momento — Test Specification
 
-> **Status:** v0.1.1 shipped. 450 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.
+> **Status:** v0.1.1 shipped. 454 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.
 
 Three parts:
 1. Pre-flight gaps found and fixed before v0.1
@@ -1575,7 +1575,7 @@ NICE TO HAVE:
 
 ## Overall Summary
 
-**v0.1.1: 450 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.**
+**v0.1.1: 454 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.**
 
 | Subsystem | Spec | Prefix | Status |
 |-----------|------|--------|--------|
@@ -1584,4 +1584,4 @@ NICE TO HAVE:
 | Check-stale CLI | 5 tests | — | ALL PASSING |
 | Hook registration | 22 tests | — | ALL PASSING |
 | Additional coverage | 264 tests | — | ALL PASSING |
-| **Total** | **450 tests** | | **98% coverage** |
+| **Total** | **454 tests** | | **98% coverage** |

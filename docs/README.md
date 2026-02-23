@@ -20,7 +20,7 @@ For a quick overview, see the main [README](../README.md).
 
 - **[Test Spec](momento-tests.md)** -- Consolidated test specification: v0.1 core (T1–T14) + v0.2 snippets (TS1–TS10)
 
-> **450 tests passing, 98% coverage.** Pre-push hook enforces 95% minimum.
+> **454 tests passing, 98% coverage.** Pre-push hook enforces 95% minimum.
 ## FAQ & Guides
 
 - **[FAQ (Markdown)](momento-faq.md)** -- Frequently asked questions

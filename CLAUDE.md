@@ -62,7 +62,7 @@ tests/
   mock_data.py     # Factory functions: make_entry(), make_snippet_day/week/empty/etc.
   test_restore.py  # Core 5-tier restore contract (largest test file)
   test_snippet_*.py # 10 files covering snippets (query, grouping, rendering, CLI, MCP, edge)
-  ...              # 30 test files total, 450 tests, 98% coverage
+  ...              # 30 test files total, 454 tests, 98% coverage
 ```
 
 ## Architecture

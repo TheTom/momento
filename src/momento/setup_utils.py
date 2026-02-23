@@ -121,9 +121,19 @@ def unregister_mcp_server(settings_path: str) -> bool:
 # Claude Adapter (CLAUDE.md)
 # ---------------------------------------------------------------------------
 
-CLAUDE_ADAPTER_HEADER = "## Momento Output Rules"
+CLAUDE_ADAPTER_HEADER = "## Momento — MANDATORY Session Start"
+
+# Legacy header for detecting old installs that need upgrading
+_LEGACY_HEADERS = ("## Momento Output Rules", "## Momento Context Recovery")
 
 CLAUDE_ADAPTER_BLOCK = """
+## Momento — MANDATORY Session Start
+
+**BEFORE doing ANY work** at the start of every session, after /clear, or after context overflow:
+  Call retrieve_context(include_session_state=true).
+  Read the full response. It contains your project state, decisions, and known pitfalls.
+  Do NOT skip this. Do NOT assume you know the project from CLAUDE.md alone.
+
 ## Momento Output Rules
 
 When running `momento` CLI commands (status, snippet, last, inspect, etc.),
@@ -136,10 +146,6 @@ After any significant file change, decision, or completed subtask:
   Call log_knowledge(type="session_state", tags=[<relevant domains>])
   with what was done, what was decided, and what's next.
   Keep it brief. Context can compact without warning.
-
-At session start or after /clear:
-  Call retrieve_context(include_session_state=true).
-  Use the returned context to orient yourself before taking action.
 
 When the user says "checkpoint" or "save progress":
   Call log_knowledge(type="session_state", tags=[<relevant domains>])
@@ -169,7 +175,8 @@ def add_claude_adapter(claude_md_path: str) -> bool:
     """Append the Momento adapter section to CLAUDE.md.
 
     Creates the file and parent dirs if they don't exist.
-    Idempotent — skips if adapter header already present.
+    Idempotent — skips if current adapter header already present.
+    Upgrades — removes legacy adapter before appending current version.
 
     Returns True on success, False on error.
     """
@@ -179,9 +186,17 @@ def add_claude_adapter(claude_md_path: str) -> bool:
             with open(claude_md_path) as f:
                 content = f.read()
 
-        # Idempotent check
+        # Already up to date
         if CLAUDE_ADAPTER_HEADER in content:
             return True
+
+        # Remove legacy adapter if present, then append fresh
+        has_legacy = any(h in content for h in _LEGACY_HEADERS)
+        if has_legacy:
+            remove_claude_adapter(claude_md_path)
+            # Re-read after removal
+            with open(claude_md_path) as f:
+                content = f.read()
 
         os.makedirs(os.path.dirname(claude_md_path), exist_ok=True)
         with open(claude_md_path, "a") as f:
@@ -195,8 +210,8 @@ def add_claude_adapter(claude_md_path: str) -> bool:
 def remove_claude_adapter(claude_md_path: str) -> bool:
     """Remove the Momento adapter section from CLAUDE.md.
 
-    Strips from '## Momento Output Rules' (or legacy '## Momento Context
-    Recovery') through the end marker line.  Preserves surrounding content.
+    Strips from the adapter header (current or any legacy variant) through
+    the end marker line.  Preserves surrounding content.
     Noop if not present or file missing.
 
     Returns True on success (including noop), False on error.
@@ -208,15 +223,16 @@ def remove_claude_adapter(claude_md_path: str) -> bool:
         with open(claude_md_path) as f:
             content = f.read()
 
-        # Handle both current and legacy adapter headers
-        _LEGACY_HEADER = "## Momento Context Recovery"
-        if CLAUDE_ADAPTER_HEADER not in content and _LEGACY_HEADER not in content:
+        # Check for current or any legacy header
+        all_headers = (CLAUDE_ADAPTER_HEADER,) + _LEGACY_HEADERS
+        if not any(h in content for h in all_headers):
             return True
 
-        # Match from whichever header appears first through the end marker
-        # including any leading blank lines before the header
+        # Match from whichever Momento header appears first through the end marker
+        # Covers: "## Momento — MANDATORY Session Start", "## Momento Output Rules",
+        # "## Momento Context Recovery"
         pattern = (
-            r"\n*## Momento (?:Output Rules|Context Recovery)\n"
+            r"\n*## Momento (?:— MANDATORY Session Start|Output Rules|Context Recovery)\n"
             r".*?"
             + re.escape(_ADAPTER_END_MARKER)
             + r"\n?"
@@ -359,6 +375,13 @@ def unregister_hooks(settings_path: str) -> bool:
 # ---------------------------------------------------------------------------
 
 CODEX_ADAPTER_CONTENT = """\
+## Momento — MANDATORY Session Start
+
+**BEFORE doing ANY work** at the start of every session, after context loss, or after resume:
+  Call retrieve_context(include_session_state=true).
+  Read the full response. It contains your project state, decisions, and known pitfalls.
+  Do NOT skip this. Do NOT assume you know the project from instructions alone.
+
 ## Momento Output Rules
 
 When running `momento` CLI commands (status, snippet, last, inspect, etc.),
