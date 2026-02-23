@@ -11,7 +11,7 @@
 
 ## Status
 
-**v0.1.1 shipped. In dogfood.** Snippets (v0.2) landed — work summaries in markdown, standup, slack, and JSON formats. Checkpoint enforcement hooks now mechanically guarantee context is saved before sessions end. Pre-push hook gates all pushes on passing tests and 95% coverage. Currently testing across Codex and Claude Code in daily driver workflows.
+**v0.1.1 shipped. In dogfood.** Snippets (v0.2) landed — work summaries in markdown, standup, slack, and JSON formats. Checkpoint enforcement hooks mechanically guarantee context is saved before sessions end. Pre-push hook gates all pushes on license headers, passing tests, and 95% coverage. 432 tests, 98% coverage. Currently testing across Codex and Claude Code in daily driver workflows.
 
 ---
 
