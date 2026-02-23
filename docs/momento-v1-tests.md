@@ -1,6 +1,6 @@
 # Momento v0.1.0 — Acceptance Tests + Pre-Flight Fixes
 
-> **Status:** v0.1.0 shipped. All 84 specified tests pass. Total test suite expanded to 350 tests during implementation.
+> **Status:** v0.1.1 shipped. All 84 specified tests pass. Total test suite: 432 tests (v0.1 core + snippets + hooks + check-stale), 98% coverage.
 
 Two sections:
 1. Gaps found in pre-flight review (fix before coding)
@@ -1009,4 +1009,4 @@ Final review:
 - 13 nice-to-have (v0.1.1) -- ALL PASSING
 - 36 remaining (full coverage) -- ALL PASSING
 
-**Shipped: 350 tests passing across all subsystems.** Test coverage expanded significantly beyond the original 84-test spec during implementation. All pre-flight gaps were fixed and all must-pass, should-pass, and nice-to-have tests are passing.
+**v0.1.1: 432 tests passing across all subsystems (98% coverage).** Includes v0.1 core (351), snippets (59), check-stale CLI (5), hook registration (22). Pre-push hook enforces 95% minimum coverage. See [Snippets Tests](momento-snippets-tests.md) for v0.2 test spec.
