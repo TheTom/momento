@@ -4,14 +4,14 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests: 351 passing](https://img.shields.io/badge/tests-351_passing-brightgreen.svg)](tests/)
+[![Tests: 432 passing](https://img.shields.io/badge/tests-432_passing-brightgreen.svg)](tests/)
 [![Coverage: 98%](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)](tests/)
 
 ---
 
 ## Status
 
-**v0.1.0 shipped. In dogfood.** Currently testing across Codex and Claude Code in daily driver workflows. Seeking early feedback from developers who live in AI coding agents.
+**v0.1.1 shipped. In dogfood.** Snippets (v0.2) landed — work summaries in markdown, standup, slack, and JSON formats. Checkpoint enforcement hooks now mechanically guarantee context is saved before sessions end. Pre-push hook gates all pushes on passing tests and 95% coverage. Currently testing across Codex and Claude Code in daily driver workflows.
 
 ---
 
@@ -61,8 +61,10 @@ The agent picks up where it left off. You didn't re-explain anything.
 
 - **Deterministic 5-tier restore** -- same inputs always produce identical output, no probabilistic scoring
 - **SQLite + FTS5** -- zero external dependencies, single file, BM25 keyword search built in
-- **MCP integration** -- two tools (`retrieve_context`, `log_knowledge`), works with any MCP-compatible agent
-- **10-command CLI** -- full control over your knowledge base from the terminal
+- **MCP integration** -- three tools (`retrieve_context`, `log_knowledge`, `generate_snippet`), works with any MCP-compatible agent
+- **12-command CLI** -- full control over your knowledge base from the terminal
+- **Work summaries (Snippets)** -- generate daily/weekly summaries in markdown, standup, slack, or JSON
+- **Checkpoint enforcement** -- hooks block session end if no checkpoint in 30+ min, auto-remind on resume
 - **Cross-agent continuity** -- Claude Code saves, Codex restores (or any combination)
 - **Surface-aware ranking** -- working in `/server`? Server entries rank first automatically
 - **Branch-aware preference** -- entries from your current branch are preferred, never filtered
@@ -103,7 +105,9 @@ For full setup including MCP server registration and agent adapters:
 | `momento inspect` | Browse the knowledge base with filters |
 | `momento prune` | Delete entries by ID, filter, or auto-prune |
 | `momento search "<query>"` | Full-text keyword search (FTS5 BM25) |
+| `momento snippet` | Work summary (daily/weekly, markdown/standup/slack/json) |
 | `momento ingest` | Import from Claude Code session logs |
+| `momento check-stale` | Checkpoint freshness check (used by hooks) |
 | `momento debug-restore` | Show restore tier breakdown for debugging |
 
 See [docs/reference.md](docs/reference.md) for full CLI reference with all flags and examples.
@@ -112,14 +116,15 @@ See [docs/reference.md](docs/reference.md) for full CLI reference with all flags
 
 ## MCP Integration
 
-Momento exposes two MCP tools. The server is stateless -- each call auto-resolves project, branch, and surface from the working directory.
+Momento exposes three MCP tools. The server is stateless -- each call auto-resolves project, branch, and surface from the working directory.
 
 | Tool | Purpose |
 |------|---------|
 | `retrieve_context` | Restore mode (empty query) or FTS5 search mode (with query) |
 | `log_knowledge` | Store a knowledge entry with type, content, and tags |
+| `generate_snippet` | Work summary for a date range in any format |
 
-Setup is handled by `./setup.sh`, which registers Momento in `~/.claude.json` with the absolute path to `momento-mcp`.
+Setup is handled by `./setup.sh`, which registers the MCP server, agent adapters, and checkpoint enforcement hooks.
 
 See [docs/reference.md](docs/reference.md) for MCP setup details and tool schemas.
 
@@ -173,7 +178,7 @@ Default locations:
 
 ### Tests & Coverage
 
-**351 tests passing. 98% branch coverage.**
+**432 tests passing. 98% coverage. Pre-push hook enforces 95% minimum.**
 
 ```bash
 pytest tests/ -v                    # Full suite
@@ -188,11 +193,12 @@ Coverage by module:
 | `cli.py` | 99% |
 | `db.py` | 100% |
 | `identity.py` | 100% |
-| `ingest.py` | 98% |
-| `mcp_server.py` | 100% |
+| `ingest.py` | 100% |
+| `mcp_server.py` | 96% |
 | `models.py` | 100% |
-| `retrieve.py` | 99% |
-| `setup_utils.py` | 90% |
+| `retrieve.py` | 100% |
+| `setup_utils.py` | 92% |
+| `snippet.py` | 97% |
 | `store.py` | 100% |
 | `surface.py` | 100% |
 | `tags.py` | 100% |
@@ -210,14 +216,15 @@ pytest tests/ --cov=momento --cov-branch --cov-report=term-missing
 ```
 src/momento/
   __init__.py       # Version
-  cli.py            # Argparse CLI (10 commands)
+  cli.py            # Argparse CLI (12 commands)
   db.py             # Schema, WAL, FTS5 triggers, migrations
   identity.py       # Git-based project resolution
   ingest.py         # JSONL batch ingestion + session log extraction
-  mcp_server.py     # MCP server (retrieve_context, log_knowledge)
+  mcp_server.py     # MCP server (retrieve_context, log_knowledge, generate_snippet)
   models.py         # Entry/RestoreResult dataclasses, SIZE_LIMITS
   retrieve.py       # 5-tier restore + FTS5 search
-  setup_utils.py    # MCP registration, CLAUDE.md adapter, Codex adapter
+  setup_utils.py    # MCP registration, adapters, hook management
+  snippet.py        # Work summaries (markdown, standup, slack, json)
   store.py          # Write path with dedup + size validation
   surface.py        # Surface detection (mapped keywords)
   tags.py           # Tag normalization (lowercase, sort, dedup)
@@ -226,7 +233,7 @@ src/momento/
 tests/
   conftest.py       # Fixtures: db, populated_db, insert helpers
   mock_data.py      # Factory functions for test scenarios
-  test_cli.py       # CLI command tests
+  test_cli.py       # CLI command tests (including check-stale)
   test_concurrency.py
   test_continuity.py
   test_cross_project.py
@@ -238,8 +245,9 @@ tests/
   test_schema.py
   test_search.py
   test_setup_sh.py  # Integration tests for setup.sh
-  test_setup_utils.py
+  test_setup_utils.py # Including hook registration tests
   test_size_limits.py
+  test_snippet_*.py # 10 files covering snippets (query, grouping, rendering, CLI, MCP, edge)
   test_store.py
   test_surface.py
   test_tags.py
@@ -252,6 +260,7 @@ tests/
 | Version | Focus |
 |---------|-------|
 | **v0.1** | Core restore, CLI, FTS5 search **(shipped)** |
+| **v0.1.1** | Snippets, checkpoint hooks, pre-push gate, output rules **(shipped)** |
 | v0.2 | Session tracking, CLAUDE.md export, watchdog |
 | v0.3 | Vector embeddings (hybrid BM25 + semantic), multi-editor adapters |
 | v0.4 | CI promotion, retrieval analytics |
