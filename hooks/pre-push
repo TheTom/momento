@@ -2,21 +2,43 @@
 # Copyright (c) 2026 Tom Turney
 # SPDX-License-Identifier: Apache-2.0
 
-# Git pre-push hook: all tests must pass and coverage must be >= 95%.
+# Git pre-push hook: license headers, tests, and coverage >= 95%.
 # Install: cp hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 # Or run: ./setup.sh (registers automatically)
 
 set -euo pipefail
 
 MIN_COVERAGE=95
+LICENSE_HEADER="SPDX-License-Identifier: Apache-2.0"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# Skip tests if only docs/non-code files changed
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# ---------- License header check (always runs) ----------
+echo -e "${CYAN}[pre-push]${NC} Checking license headers..."
+MISSING=""
+while IFS= read -r -d '' file; do
+    if ! head -5 "$file" | grep -q "$LICENSE_HEADER"; then
+        MISSING="$MISSING  $file\n"
+    fi
+done < <(find "$REPO_ROOT/src" "$REPO_ROOT/tests" "$REPO_ROOT/hooks" -type f \( -name '*.py' -o -name '*.sh' \) -print0 2>/dev/null)
+# Also check setup.sh at root
+if [[ -f "$REPO_ROOT/setup.sh" ]] && ! head -5 "$REPO_ROOT/setup.sh" | grep -q "$LICENSE_HEADER"; then
+    MISSING="$MISSING  setup.sh\n"
+fi
+if [[ -n "$MISSING" ]]; then
+    echo -e "${RED}[pre-push]${NC} Missing SPDX license header:"
+    echo -e "$MISSING"
+    echo -e "${RED}[pre-push]${NC} Push blocked. Add '# $LICENSE_HEADER' to the top of each file."
+    exit 1
+fi
+echo -e "${GREEN}[pre-push]${NC} All source files have license headers."
+
+# ---------- Skip tests if only docs/non-code files changed ----------
 CHANGED_FILES=$(git diff --name-only "origin/$(git rev-parse --abbrev-ref HEAD)..HEAD" 2>/dev/null || git diff --name-only HEAD~1..HEAD 2>/dev/null || echo "")
 if [[ -n "$CHANGED_FILES" ]]; then
     CODE_FILES=$(echo "$CHANGED_FILES" | grep -vE '\.(md|txt|html|css|json)$|^docs/|^\.gitignore$|^LICENSE$|^README' || true)
@@ -26,6 +48,7 @@ if [[ -n "$CHANGED_FILES" ]]; then
     fi
 fi
 
+# ---------- Tests + coverage ----------
 echo -e "${CYAN}[pre-push]${NC} Running tests with coverage check..."
 
 # Find python — prefer project venv, fall back to PATH
