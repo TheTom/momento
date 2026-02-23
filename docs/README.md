@@ -18,8 +18,10 @@ For a quick overview, see the main [README](../README.md).
 
 ## Testing
 
-- **[Test Plan](momento-v1-tests.md)** -- v0.1 acceptance tests, pre-flight review, and test priority matrix (351 tests passing)
+- **[Test Plan](momento-v1-tests.md)** -- v0.1 acceptance tests, pre-flight review, and test priority matrix
 - **[Snippets Tests](momento-snippets-tests.md)** -- v0.2 snippets test spec (57 tests across 10 subsystems)
+
+> **432 tests passing, 98% coverage.** Pre-push hook enforces 95% minimum.
 ## FAQ & Guides
 
 - **[FAQ (Markdown)](momento-faq.md)** -- Frequently asked questions
