@@ -228,6 +228,124 @@ def remove_claude_adapter(claude_md_path: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Claude Code Hooks (checkpoint guard + context recovery)
+# ---------------------------------------------------------------------------
+
+# Inline commands — no separate scripts needed, uses `momento` CLI on PATH.
+_STOP_HOOK_CMD = (
+    'momento check-stale --threshold 30 >/dev/null 2>&1 || '
+    '(echo \'CHECKPOINT REQUIRED: No Momento checkpoint in 30+ minutes. '
+    'Call log_knowledge(type="session_state", tags=[<relevant domains>]) '
+    'with what was done, decisions made, and what is next.\' >&2; exit 2)'
+)
+
+_SESSION_RESTORE_COMPACT_CMD = (
+    "echo 'CONTEXT RECOVERY: Session restored after compaction. "
+    "Call retrieve_context(include_session_state=true) to restore "
+    "Momento context before taking action.'"
+)
+
+_SESSION_RESTORE_RESUME_CMD = (
+    "echo 'CONTEXT RECOVERY: Session resumed from previous conversation. "
+    "Call retrieve_context(include_session_state=true) to restore "
+    "Momento context before taking action.'"
+)
+
+
+def _is_momento_hook(hook_config: dict) -> bool:
+    """Check if a hook config entry belongs to Momento."""
+    for h in hook_config.get("hooks", []):
+        cmd = h.get("command", "")
+        if "momento" in cmd and "claude_terminal" not in cmd:
+            return True
+    return False
+
+
+def register_hooks(settings_path: str) -> bool:
+    """Register Momento hooks in ~/.claude/settings.json.
+
+    Adds:
+    - Stop hook: checkpoint staleness guard (blocks if no checkpoint in 30+ min)
+    - SessionStart hooks: context recovery reminders after compact/resume
+
+    Idempotent — removes existing Momento hooks before adding fresh ones.
+
+    Returns True on success, False on error.
+    """
+    try:
+        data = {}
+        if os.path.exists(settings_path):
+            with open(settings_path) as f:
+                data = json.load(f)
+
+        if "hooks" not in data:
+            data["hooks"] = {}
+
+        hooks = data["hooks"]
+
+        # Remove any existing Momento hooks first (idempotent)
+        for event in ("Stop", "SessionStart"):
+            if event in hooks:
+                hooks[event] = [h for h in hooks[event] if not _is_momento_hook(h)]
+
+        # Add Stop checkpoint guard
+        hooks.setdefault("Stop", []).append({
+            "hooks": [{"type": "command", "command": _STOP_HOOK_CMD}],
+        })
+
+        # Add SessionStart recovery (compact + resume)
+        hooks.setdefault("SessionStart", []).append({
+            "matcher": "compact",
+            "hooks": [{"type": "command", "command": _SESSION_RESTORE_COMPACT_CMD}],
+        })
+        hooks.setdefault("SessionStart", []).append({
+            "matcher": "resume",
+            "hooks": [{"type": "command", "command": _SESSION_RESTORE_RESUME_CMD}],
+        })
+
+        _write_json_atomic(settings_path, data)
+        return True
+    except Exception:
+        return False
+
+
+def unregister_hooks(settings_path: str) -> bool:
+    """Remove Momento hooks from ~/.claude/settings.json.
+
+    Removes any hook config whose command contains 'momento'
+    (but not 'claude_terminal'). Preserves all other hooks.
+
+    Returns True on success (including noop), False on error.
+    """
+    try:
+        if not os.path.exists(settings_path):
+            return True
+
+        with open(settings_path) as f:
+            data = json.load(f)
+
+        hooks = data.get("hooks", {})
+        changed = False
+
+        for event in ("Stop", "SessionStart"):
+            if event in hooks:
+                before = len(hooks[event])
+                hooks[event] = [h for h in hooks[event] if not _is_momento_hook(h)]
+                if len(hooks[event]) != before:
+                    changed = True
+                # Clean up empty arrays
+                if not hooks[event]:
+                    del hooks[event]
+
+        if changed:
+            _write_json_atomic(settings_path, data)
+
+        return True
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Codex Adapter (.codex_instructions.md)
 # ---------------------------------------------------------------------------
 
@@ -348,6 +466,8 @@ def main():
         "unregister_mcp": unregister_mcp_server,
         "add_claude_adapter": add_claude_adapter,
         "remove_claude_adapter": remove_claude_adapter,
+        "register_hooks": register_hooks,
+        "unregister_hooks": unregister_hooks,
         "generate_codex_adapter": generate_codex_adapter,
         "remove_codex_adapter": remove_codex_adapter,
     }

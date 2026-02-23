@@ -189,6 +189,15 @@ generate_codex_adapter() {
         || warn "Could not generate $codex_file"
 }
 
+register_hooks() {
+    local settings_file="$HOME/.claude/settings.json"
+    local py="${PIPX_PYTHON:-$PYTHON}"
+
+    "$py" -m momento.setup_utils register_hooks "$settings_file" \
+        && ok "Registered checkpoint hooks in $settings_file" \
+        || warn "Could not update $settings_file"
+}
+
 setup_mcp_integration() {
     echo ""
     info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -209,6 +218,11 @@ setup_mcp_integration() {
     # --- Add adapter instructions to CLAUDE.md ---
     if confirm "Add Momento instructions to your global CLAUDE.md? [Y/n]"; then
         add_claude_adapter
+    fi
+
+    # --- Register checkpoint hooks in Claude Code ---
+    if confirm "Register checkpoint guard hooks in Claude Code? [Y/n]"; then
+        register_hooks
     fi
 
     # --- Generate .codex_instructions.md ---
@@ -280,6 +294,16 @@ do_uninstall() {
                 "$py" -m momento.setup_utils remove_claude_adapter "$claude_md" 2>/dev/null \
                     && ok "Removed Momento adapter from $claude_md" \
                     || warn "Could not update $claude_md"
+            fi
+        fi
+
+        # Remove checkpoint hooks from settings.json
+        local hook_settings="$HOME/.claude/settings.json"
+        if [[ -f "$hook_settings" ]] && grep -q "momento" "$hook_settings" 2>/dev/null; then
+            if confirm "Remove Momento checkpoint hooks from $hook_settings? [Y/n]"; then
+                "$py" -m momento.setup_utils unregister_hooks "$hook_settings" 2>/dev/null \
+                    && ok "Removed checkpoint hooks from $hook_settings" \
+                    || warn "Could not update $hook_settings"
             fi
         fi
 
