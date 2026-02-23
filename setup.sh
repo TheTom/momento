@@ -198,6 +198,27 @@ register_hooks() {
         || warn "Could not update $settings_file"
 }
 
+install_git_hooks() {
+    local repo_root
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    if [[ -z "$repo_root" || ! -d "$repo_root/.git/hooks" ]]; then
+        warn "Not in a git repo — skipping git hook install"
+        return 1
+    fi
+
+    local src="$repo_root/hooks/pre-push"
+    local dst="$repo_root/.git/hooks/pre-push"
+
+    if [[ ! -f "$src" ]]; then
+        warn "hooks/pre-push not found in repo"
+        return 1
+    fi
+
+    cp "$src" "$dst" && chmod +x "$dst" \
+        && ok "Installed pre-push hook (tests + ${MIN_COVERAGE:-95}% coverage gate)" \
+        || warn "Could not install pre-push hook"
+}
+
 setup_mcp_integration() {
     echo ""
     info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -223,6 +244,11 @@ setup_mcp_integration() {
     # --- Register checkpoint hooks in Claude Code ---
     if confirm "Register checkpoint guard hooks in Claude Code? [Y/n]"; then
         register_hooks
+    fi
+
+    # --- Install git pre-push hook ---
+    if confirm "Install pre-push hook (tests + coverage gate)? [Y/n]"; then
+        install_git_hooks || true
     fi
 
     # --- Generate .codex_instructions.md ---

@@ -25,6 +25,7 @@ from momento.cli import (
     cmd_inspect,
     cmd_prune,
     cmd_search,
+    cmd_check_stale,
     cmd_debug_restore,
     cmd_ingest,
     _format_age,
@@ -1394,3 +1395,94 @@ class TestParseDuration:
     def test_unknown_unit(self):
         from momento.cli import _parse_duration
         assert _parse_duration("10x") is None
+
+
+# ---------------------------------------------------------------------------
+# cmd_check_stale
+# ---------------------------------------------------------------------------
+
+
+class TestCmdCheckStale:
+    """Cover cmd_check_stale (checkpoint freshness check for hooks)."""
+
+    @pytest.mark.should_pass
+    def test_fresh_checkpoint(self, db, capsys):
+        """Recent checkpoint exits 0 and prints 'fresh'."""
+        entry = make_entry(
+            content="Recent checkpoint.",
+            type="session_state",
+            tags=["server"],
+            branch="main",
+            created_at=minutes_ago(5),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace(threshold=30)
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_check_stale(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        assert "fresh" in out
+
+    @pytest.mark.should_pass
+    def test_stale_checkpoint(self, db, capsys):
+        """Old checkpoint exits 1 and prints 'stale' to stderr."""
+        entry = make_entry(
+            content="Old checkpoint.",
+            type="session_state",
+            tags=["server"],
+            branch="main",
+            created_at=hours_ago(2),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace(threshold=30)
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_check_stale(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "stale" in err
+
+    @pytest.mark.should_pass
+    def test_no_checkpoint(self, db, capsys):
+        """No checkpoint at all exits 1 and prints 'no checkpoint found'."""
+        args = SimpleNamespace(threshold=30)
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_check_stale(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "no checkpoint found" in err
+
+    @pytest.mark.should_pass
+    def test_custom_threshold(self, db, capsys):
+        """Custom threshold: 10 min old entry is stale with --threshold 5."""
+        entry = make_entry(
+            content="Ten minute old checkpoint.",
+            type="session_state",
+            tags=["server"],
+            branch="main",
+            created_at=minutes_ago(10),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace(threshold=5)
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_check_stale(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        assert exc_info.value.code == 1
+
+    @pytest.mark.should_pass
+    def test_ignores_non_session_state(self, db, capsys):
+        """Only session_state entries count — decisions don't prevent stale."""
+        entry = make_entry(
+            content="Recent decision.",
+            type="decision",
+            tags=["server"],
+            branch="main",
+            created_at=minutes_ago(1),
+        )
+        insert_entry(db, entry)
+        db.commit()
+        args = SimpleNamespace(threshold=30)
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_check_stale(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        assert exc_info.value.code == 1

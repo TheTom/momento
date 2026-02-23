@@ -255,7 +255,7 @@ _SESSION_RESTORE_RESUME_CMD = (
 def _is_momento_hook(hook_config: dict) -> bool:
     """Check if a hook config entry belongs to Momento."""
     for h in hook_config.get("hooks", []):
-        cmd = h.get("command", "")
+        cmd = h.get("command", "").lower()
         if "momento" in cmd and "claude_terminal" not in cmd:
             return True
     return False

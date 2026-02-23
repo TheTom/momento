@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Tom Turney
+# SPDX-License-Identifier: Apache-2.0
+
+# Git pre-push hook: all tests must pass and coverage must be >= 95%.
+# Install: cp hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+# Or run: ./setup.sh (registers automatically)
+
+set -euo pipefail
+
+MIN_COVERAGE=95
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+echo -e "${CYAN}[pre-push]${NC} Running tests with coverage check..."
+
+# Find python — prefer project venv, fall back to PATH
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+if [[ -x "$REPO_ROOT/.venv/bin/python3" ]]; then
+    PY="$REPO_ROOT/.venv/bin/python3"
+elif command -v python3 &>/dev/null; then
+    PY="python3"
+else
+    echo -e "${RED}[pre-push]${NC} Python not found. Aborting push."
+    exit 1
+fi
+
+# Run tests with coverage
+OUTPUT=$("$PY" -m pytest "$REPO_ROOT/tests/" \
+    --cov=momento \
+    --cov-report=term-missing \
+    --cov-fail-under="$MIN_COVERAGE" \
+    -q 2>&1) || {
+    echo -e "${RED}[pre-push]${NC} Tests failed or coverage below ${MIN_COVERAGE}%."
+    echo ""
+    echo "$OUTPUT"
+    echo ""
+    echo -e "${RED}[pre-push]${NC} Push blocked. Fix tests and/or coverage before pushing."
+    exit 1
+}
+
+# Extract coverage percentage from output
+COVERAGE=$(echo "$OUTPUT" | grep "^TOTAL" | awk '{print $NF}' | tr -d '%')
+
+echo -e "${GREEN}[pre-push]${NC} All tests passed. Coverage: ${COVERAGE}% (minimum: ${MIN_COVERAGE}%)"
+exit 0
