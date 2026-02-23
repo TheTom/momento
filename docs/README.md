@@ -12,11 +12,14 @@ For a quick overview, see the main [README](../README.md).
 
 - **[Architecture](momento-architecture.html)** -- Interactive architecture visualization
 - **[PRD](prd-momento-final-v2.md)** -- Product requirements document (v0.1 shipped)
+- **[Snippets PRD](prd-momento-snippets.md)** -- Snippets feature PRD (v0.2)
+- **[Roadmap](momento-roadmap.md)** -- Feature roadmap v0.2-v1.0
 - **[User Journeys](prd-momento-user-journeys.md)** -- Core user journey definitions for v0.1
 
 ## Testing
 
-- **[Test Plan](momento-v1-tests.md)** -- Acceptance tests, pre-flight review, and test priority matrix (350 tests passing)
+- **[Test Plan](momento-v1-tests.md)** -- v0.1 acceptance tests, pre-flight review, and test priority matrix (351 tests passing)
+- **[Snippets Tests](momento-snippets-tests.md)** -- v0.2 snippets test spec (57 tests across 10 subsystems)
 ## FAQ & Guides
 
 - **[FAQ (Markdown)](momento-faq.md)** -- Frequently asked questions
