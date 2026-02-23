@@ -297,8 +297,9 @@ def _render_daily_markdown(sections: SnippetSections, lines: list[str]) -> None:
 
     if sections.discovered:
         lines.append("### Discovered")
-        for entry in sections.discovered:
-            lines.append(f"- {entry.content}")
+        for entry, count in _dedup_entries(sections.discovered):
+            suffix = f" (×{count})" if count > 1 else ""
+            lines.append(f"- {_first_line(entry.content)}{suffix}")
         lines.append("")
 
     if sections.in_progress:
@@ -346,10 +347,12 @@ def _render_weekly_markdown(sections: SnippetSections, meta: SnippetMeta, lines:
 
     # Discovered with date annotations
     if sections.discovered:
-        lines.append(f"### Discovered ({len(sections.discovered)})")
-        for entry in sections.discovered:
+        deduped = _dedup_entries(sections.discovered)
+        lines.append(f"### Discovered ({sum(c for _, c in deduped)} total, {len(deduped)} unique)")
+        for entry, count in deduped:
             date_str = _entry_date_short(entry.created_at)
-            lines.append(f"- {_first_line(entry.content)} ({date_str})")
+            suffix = f" (×{count})" if count > 1 else ""
+            lines.append(f"- {_first_line(entry.content)}{suffix} ({date_str})")
         lines.append("")
 
     # Conventions
@@ -386,10 +389,14 @@ def render_standup(sections: SnippetSections, meta: SnippetMeta) -> str:
     else:
         future = f"{future_label} —"
 
-    # Blockers: gotchas
+    # Blockers: gotchas (deduped)
     if sections.discovered:
-        bullets = "\n".join(f"- {_ensure_period(_first_line(e.content))}" for e in sections.discovered)
-        blockers = f"*Blockers:*\n{bullets}"
+        bullet_lines = []
+        for entry, count in _dedup_entries(sections.discovered):
+            text = _ensure_period(_first_line(entry.content))
+            suffix = f" (×{count})" if count > 1 else ""
+            bullet_lines.append(f"- {text}{suffix}")
+        blockers = f"*Blockers:*\n" + "\n".join(bullet_lines)
     else:
         blockers = "*Blockers:* None detected."
 
@@ -411,8 +418,9 @@ def render_slack(sections: SnippetSections, meta: SnippetMeta) -> str:
         items.append(f"\u2705 {_first_line(entry.content)}")
     for entry in sections.decisions:
         items.append(f"\U0001f4cc Decided: {_first_line(entry.content)}")
-    for entry in sections.discovered:
-        items.append(f"\u26a0\ufe0f Gotcha: {_first_line(entry.content)}")
+    for entry, count in _dedup_entries(sections.discovered):
+        suffix = f" (×{count})" if count > 1 else ""
+        items.append(f"\u26a0\ufe0f Gotcha: {_first_line(entry.content)}{suffix}")
     for entry in sections.in_progress:
         items.append(f"\U0001f504 In progress: {_first_line(entry.content)}")
     for entry in sections.patterns:
@@ -451,7 +459,10 @@ def render_json(sections: SnippetSections, meta: SnippetMeta) -> str:
         "sections": {
             "accomplished": [_entry_to_dict(e, include_source_type=True) for e in sections.accomplished],
             "decisions": [_entry_to_dict(e) for e in sections.decisions],
-            "discovered": [_entry_to_dict(e) for e in sections.discovered],
+            "discovered": [
+                {**_entry_to_dict(e), "count": c} if c > 1 else _entry_to_dict(e)
+                for e, c in _dedup_entries(sections.discovered)
+            ],
             "in_progress": [_entry_to_dict(e, include_source_type=True) for e in sections.in_progress],
             "patterns": [_entry_to_dict(e) for e in sections.patterns],
         },
@@ -476,6 +487,28 @@ def _first_line(content: str) -> str:
 def _single_line(content: str) -> str:
     """Collapse content to a single line for slack output."""
     return content.replace("\n", " ").strip()
+
+
+def _dedup_entries(entries: list[Entry]) -> list[tuple[Entry, int]]:
+    """Deduplicate entries by first line of content, preserving first-seen order.
+
+    Returns (entry, count) tuples. Entries whose first line is identical
+    are collapsed — different stack traces / details after line 1 don't matter.
+    """
+    seen: dict[str, int] = {}
+    order: list[str] = []
+    reps: dict[str, Entry] = {}
+
+    for entry in entries:
+        key = _first_line(entry.content)
+        if key in seen:
+            seen[key] += 1
+        else:
+            seen[key] = 1
+            order.append(key)
+            reps[key] = entry
+
+    return [(reps[k], seen[k]) for k in order]
 
 
 def _ensure_period(text: str) -> str:

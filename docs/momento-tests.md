@@ -1,6 +1,6 @@
 # Momento — Test Specification
 
-> **Status:** v0.1.1 shipped. 437 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.
+> **Status:** v0.1.1 shipped. 443 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.
 
 Three parts:
 1. Pre-flight gaps found and fixed before v0.1
@@ -1500,6 +1500,18 @@ Then:
   - JSON format: staleness included as "staleness_warning" field, not text prefix
 ```
 
+**TS9.9 — Gotcha deduplication** `must_pass`
+```
+Given: Multiple gotcha entries with identical first line but different details
+When: Any format renders them
+Then:
+  - Identical first-line gotchas are collapsed into one entry
+  - Count shown as "(×N)" suffix in text formats
+  - JSON format includes "count" field when > 1
+  - Unique gotchas remain separate with no count suffix
+  - First-seen order preserved
+```
+
 ---
 
 ### TS10: Weekly Mode
@@ -1548,7 +1560,7 @@ Then: "### Decisions Made (3)" with date annotations
 MUST PASS (blocks ship) -- 29 tests:
   TS1.1-1.4, TS1.7, TS2.1-2.4, TS2.7, TS3.1-3.3, TS3.5,
   TS4.1, TS4.4, TS5.1, TS5.4, TS6.1, TS6.2, TS7.1, TS7.4,
-  TS8.1, TS8.2, TS9.1, TS9.2, TS9.4, TS9.8, TS10.1, TS10.2
+  TS8.1, TS8.2, TS9.1, TS9.2, TS9.4, TS9.8, TS9.9, TS10.1, TS10.2
 
 SHOULD PASS (fix within days) -- 20 tests:
   TS1.5, TS1.6, TS1.8, TS2.5, TS2.6, TS2.8, TS3.4,
@@ -1563,13 +1575,13 @@ NICE TO HAVE:
 
 ## Overall Summary
 
-**v0.1.1: 437 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.**
+**v0.1.1: 443 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.**
 
 | Subsystem | Spec | Prefix | Status |
 |-----------|------|--------|--------|
 | v0.1 Core (T1–T14) | 84 tests | T | ALL PASSING |
-| v0.2 Snippets (TS1–TS10) | 62 tests | TS | ALL PASSING |
+| v0.2 Snippets (TS1–TS10) | 68 tests | TS | ALL PASSING |
 | Check-stale CLI | 5 tests | — | ALL PASSING |
 | Hook registration | 22 tests | — | ALL PASSING |
 | Additional coverage | 264 tests | — | ALL PASSING |
-| **Total** | **437 tests** | | **98% coverage** |
+| **Total** | **443 tests** | | **98% coverage** |

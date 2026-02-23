@@ -13,6 +13,7 @@ from momento.snippet import (
     group_entries,
     split_session_states,
     extract_surface,
+    _dedup_entries,
 )
 from momento.models import Entry
 from tests.mock_data import (
@@ -353,3 +354,122 @@ class TestStalenessWarning:
         parsed = json.loads(output)
         assert "staleness_warning" in parsed
         assert "15m ago" in parsed["staleness_warning"]
+
+
+# ---------------------------------------------------------------------------
+# TS9.9 — Gotcha deduplication
+# ---------------------------------------------------------------------------
+
+@pytest.mark.must_pass
+class TestGotchaDedup:
+    """TS9.9: duplicate gotchas are collapsed with a count."""
+
+    def test_dedup_collapses_identical_first_line(self):
+        """Entries with same first line are collapsed regardless of full content."""
+        entries = [
+            _entry_to_model(make_entry(
+                content=f"Error: Exit code 1\nTrace {i}", type="gotcha",
+                tags=["server"], branch="main", created_at=hours_ago(i),
+            ))
+            for i in range(5)
+        ]
+        result = _dedup_entries(entries)
+        assert len(result) == 1
+        assert "Exit code 1" in result[0][0].content
+        assert result[0][1] == 5
+
+    def test_dedup_preserves_unique(self):
+        """Different first lines stay separate with count=1."""
+        entries = [
+            _entry_to_model(make_entry(
+                content=f"Unique error {i}", type="gotcha",
+                tags=["server"], branch="main", created_at=hours_ago(i),
+            ))
+            for i in range(3)
+        ]
+        result = _dedup_entries(entries)
+        assert len(result) == 3
+        assert all(count == 1 for _, count in result)
+
+    def test_dedup_mixed(self):
+        """Mix of duplicates and unique entries."""
+        entries = [
+            _entry_to_model(make_entry(
+                content="Error: Exit code 1\nTrace A", type="gotcha",
+                tags=["server"], branch="main", created_at=hours_ago(5),
+            )),
+            _entry_to_model(make_entry(
+                content="Error: Exit code 1\nTrace B", type="gotcha",
+                tags=["server"], branch="main", created_at=hours_ago(4),
+            )),
+            _entry_to_model(make_entry(
+                content="File not found", type="gotcha",
+                tags=["server"], branch="main", created_at=hours_ago(3),
+            )),
+            _entry_to_model(make_entry(
+                content="Error: Exit code 1\nTrace C", type="gotcha",
+                tags=["server"], branch="main", created_at=hours_ago(2),
+            )),
+        ]
+        result = _dedup_entries(entries)
+        assert len(result) == 2
+        assert "Exit code 1" in result[0][0].content
+        assert result[0][1] == 3
+        assert result[1][0].content == "File not found"
+        assert result[1][1] == 1
+
+    def test_dedup_renders_count_in_slack(self, db):
+        """Slack format shows ×N for duplicated gotchas."""
+        entries = [
+            make_entry(content=f"Error: Exit code 1\nContext {i}", type="gotcha",
+                       tags=["server"], branch="main", created_at=hours_ago(i))
+            for i in range(1, 4)
+        ]
+        insert_entries(db, entries)
+
+        start, end, _ = resolve_range(today=True)
+        output = generate_snippet(
+            db, MOCK_PROJECT_ID, start, end,
+            format="slack", project_name=MOCK_PROJECT_NAME,
+        )
+
+        assert "×3" in output
+        assert output.count("Exit code 1") == 1  # only once, not 3 times
+
+    def test_dedup_renders_count_in_markdown(self, db):
+        """Markdown format shows ×N for duplicated gotchas."""
+        entries = [
+            make_entry(content=f"Error: Exit code 1\nContext {i}", type="gotcha",
+                       tags=["server"], branch="main", created_at=hours_ago(i))
+            for i in range(1, 4)
+        ]
+        insert_entries(db, entries)
+
+        start, end, _ = resolve_range(today=True)
+        output = generate_snippet(
+            db, MOCK_PROJECT_ID, start, end,
+            format="markdown", project_name=MOCK_PROJECT_NAME,
+        )
+
+        assert "×3" in output
+        assert output.count("Exit code 1") == 1
+
+    def test_dedup_json_has_count_field(self, db):
+        """JSON format includes count field for duplicated gotchas."""
+        entries = [
+            make_entry(content=f"Error: Exit code 1\nContext {i}", type="gotcha",
+                       tags=["server"], branch="main", created_at=hours_ago(i))
+            for i in range(1, 4)
+        ]
+        insert_entries(db, entries)
+
+        start, end, _ = resolve_range(today=True)
+        output = generate_snippet(
+            db, MOCK_PROJECT_ID, start, end,
+            format="json", project_name=MOCK_PROJECT_NAME,
+        )
+
+        parsed = json.loads(output)
+        discovered = parsed["sections"]["discovered"]
+        assert len(discovered) == 1
+        assert discovered[0]["count"] == 3

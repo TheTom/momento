@@ -3,7 +3,7 @@
   "branch": null,
   "range": {
     "start": "2026-02-23T00:00:00Z",
-    "end": "2026-02-23T16:43:49Z"
+    "end": "2026-02-23T16:54:52Z"
   },
   "sections": {
     "accomplished": [
@@ -42,11 +42,8 @@
     "discovered": [
       {
         "content": "Error: Exit code 1\nerror: externally-managed-environment\n\n\u00d7 This environment is externally managed\n\u2570\u2500> To install Python packages system-wide, try brew install\n    xyz, where xyz is the package you are tryin\nResolution: Homebrew-managed Python. Let me force-uninstall it and also check if it was installed via pipx.",
-        "entry_id": "f5a8c668-77c4-4d51-ae7e-36089e9a6a1f"
-      },
-      {
-        "content": "Error: Exit code 1\n\n\u001b[0;36m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m\n\u001b[0;36m  Momento \u2014 Deterministic State Recovery for AI Coding Agents\u001b[0m\n\u001b[0;36m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nResolution: The install succeeded (311 tests passing, venv created, CLI working) but the interactive MCP prompts failed because there's no TTY for `read -rp` in this shell. The `read` commands need stdin.\n\nLet me",
-        "entry_id": "d17e8b79-09cd-4bd8-892d-b9a8c3584e94"
+        "entry_id": "f5a8c668-77c4-4d51-ae7e-36089e9a6a1f",
+        "count": 8
       },
       {
         "content": "Error: <tool_use_error>File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.</tool_use_error>\nResolution: README done. Now the reference doc -- extracting the detailed content from the old README.",
@@ -61,14 +58,6 @@
         "entry_id": "f6b6aa7e-7d00-4c91-a94b-24f131a03ca9"
       },
       {
-        "content": "Error: Exit code 1\n---\n---\n\n---\n---\nResolution: Let me verify the agents' work by checking the files directly.",
-        "entry_id": "800ae955-de59-46ca-bf06-3d8c8446d2ee"
-      },
-      {
-        "content": "Error: Exit code 1\ntail: /private/tmp/claude-501/-Users-tom-dev-momento/tasks/bddb536.output: No such file or directory\n\ntail: /private/tmp/claude-501/-Users-tom-dev-momento/tasks/bddb536.output: No such fil\nResolution: Let me verify the agents' work by checking the files directly.",
-        "entry_id": "ce4a0d99-59e9-4a77-a11f-f4c3e2d6d187"
-      },
-      {
         "content": "Error: Exit code 128\nfatal: No configured push destination.\nEither specify the URL from the command-line or configure a remote repository using\n\n    git remote add <name> <url>\n\nand then push using the remot\nResolution: No remote configured yet. Need to create the repo on GitHub first.",
         "entry_id": "5aa15b9c-a862-4c39-b6de-cdd662dfedc3"
       },
@@ -79,22 +68,6 @@
       {
         "content": "Error: Exit code 2\n============================= test session starts ==============================\nplatform darwin -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0 -- /opt/homebrew/opt/python@3.13/bin/python3.1\nResolution: Need to install the package first.",
         "entry_id": "8863a5f4-7cba-4c5a-81bc-649fa0e61800"
-      },
-      {
-        "content": "Error: Exit code 1\n============================= test session starts ==============================\nplatform darwin -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0 -- /opt/homebrew/opt/python@3.13/bin/python3.1\nResolution: The `--check` mode runs the full test suite inside a subprocess, causing timeouts. Let me fix the integration tests and address your teammate question \u2014 I was using Task agents (subprocesses), not ful",
-        "entry_id": "f2edc11d-5ba0-419b-8ea7-90a3c40af8b3"
-      },
-      {
-        "content": "Error: Exit code 1\n(eval):1: no matches found: .venv/bin/python*\n\n(eval):1: no matches found: .venv/bin/python*\nResolution: The .venv is gone \u2014 likely had broken symlinks from a Python upgrade. Let me create a fresh one.",
-        "entry_id": "07b6c006-e03d-4639-8de5-9d76118f5c5a"
-      },
-      {
-        "content": "Error: Exit code 1\nls: .venv/: No such file or directory\n\nls: .venv/: No such file or directory\nResolution: The .venv is gone \u2014 likely had broken symlinks from a Python upgrade. Let me create a fresh one.",
-        "entry_id": "a51e75af-2772-4141-b6fa-72736bcafe56"
-      },
-      {
-        "content": "Error: Exit code 1\n(eval):1: no matches found: .venv/bin/python*\n\n(eval):1: no matches found: .venv/bin/python*\nResolution: Found the bug. The integration test `test_uninstall_yes_cleans_integration_files` runs `setup.sh --uninstall --yes` which CDs to the real project root and nukes the real `.venv` because our `setup_ven",
-        "entry_id": "43424f90-3b3b-4b02-925b-4e3ee54ed369"
       },
       {
         "content": "Error: <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>\nResolution: Now clean the stale entry from `settings.json` and run tests:",
@@ -111,5 +84,6 @@
     "patterns": []
   },
   "entry_count": 22,
-  "empty": false
+  "empty": false,
+  "staleness_warning": "Note: Last checkpoint was 13m ago. Recent work may not be reflected. Run `momento save` or call log_knowledge() to capture latest progress."
 }
