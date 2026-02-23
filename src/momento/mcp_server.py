@@ -8,7 +8,7 @@ import os
 
 from mcp.server.fastmcp import FastMCP
 
-from momento import db, identity, retrieve, store, surface
+from momento import db, identity, retrieve, snippet, store, surface
 
 server = FastMCP("momento")
 
@@ -90,6 +90,45 @@ def log_knowledge(content: str, type: str, tags: list[str]) -> str:
             enforce_limits=True,
         )
         return json.dumps(result)
+    finally:
+        conn.close()
+
+
+@server.tool(
+    description=(
+        "Generate a work summary from stored memory entries for the current project."
+    ),
+)
+def generate_snippet(
+    range: str = "today",
+    start_date: str = "",
+    end_date: str = "",
+    format: str = "markdown",
+) -> str:
+    cwd = os.getcwd()
+    env = _resolve_env(cwd)
+    conn = db.ensure_db(_db_path())
+    try:
+        # Resolve time range
+        if range == "custom" and start_date and end_date:
+            range_start, range_end, label = snippet.resolve_range(
+                range_start=start_date, range_end=end_date,
+            )
+        elif range == "yesterday":
+            range_start, range_end, label = snippet.resolve_range(yesterday=True)
+        elif range == "week":
+            range_start, range_end, label = snippet.resolve_range(week=True)
+        else:
+            range_start, range_end, label = snippet.resolve_range(today=True)
+
+        return snippet.generate_snippet(
+            conn=conn,
+            project_id=env["project_id"],
+            range_start=range_start,
+            range_end=range_end,
+            format=format,
+            project_name=env["project_name"] or "",
+        )
     finally:
         conn.close()
 

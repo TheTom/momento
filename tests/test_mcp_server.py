@@ -43,9 +43,9 @@ class TestToolRegistration:
         tools = server._tool_manager._tools
         assert "log_knowledge" in tools
 
-    def test_exactly_two_tools(self):
+    def test_exactly_three_tools(self):
         tools = server._tool_manager._tools
-        assert len(tools) == 2
+        assert len(tools) == 3
 
 
 # ---------------------------------------------------------------------------

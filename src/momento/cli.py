@@ -14,6 +14,7 @@ from momento.identity import resolve_project_id, resolve_branch
 from momento.surface import detect_surface
 from momento.store import log_knowledge
 from momento.tokens import format_age
+from momento.snippet import generate_snippet, resolve_range
 
 
 # Default DB location
@@ -447,6 +448,71 @@ def cmd_search(args, conn, project_id, project_name, branch):
     print(f"\n{len(result.entries)} results, ~{result.total_tokens} tokens")
 
 
+def cmd_snippet(args, conn, project_id, project_name, branch):
+    """Generate a work summary from stored entries."""
+    if project_id is None:
+        print("Error: no project detected. Run from a git repository with Momento entries.", file=sys.stderr)
+        sys.exit(1)
+
+    # Resolve time range
+    if args.date_range:
+        range_start, range_end, label = resolve_range(
+            range_start=args.date_range[0], range_end=args.date_range[1],
+        )
+    elif args.yesterday:
+        range_start, range_end, label = resolve_range(yesterday=True)
+    elif args.week:
+        range_start, range_end, label = resolve_range(week=True)
+    else:
+        range_start, range_end, label = resolve_range(today=True)
+
+    output = generate_snippet(
+        conn=conn,
+        project_id=project_id,
+        range_start=range_start,
+        range_end=range_end,
+        format=args.fmt,
+        branch=args.branch,
+        all_projects=args.all_projects,
+        project_name=project_name or "",
+    )
+
+    print(output, end="")
+
+
+def cmd_check_stale(args, conn, project_id, project_name, branch):
+    """Check if the last session_state checkpoint is stale.
+
+    Exits 0 if fresh (< threshold), exits 1 if stale or no checkpoint.
+    Designed for use in Claude Code hooks.
+    """
+    threshold_minutes = getattr(args, "threshold", 30)
+    threshold = timedelta(minutes=threshold_minutes)
+
+    cursor = conn.execute(
+        "SELECT MAX(created_at) FROM knowledge WHERE project_id = ? AND type = 'session_state'",
+        (project_id,),
+    )
+    last_checkpoint = cursor.fetchone()[0]
+
+    if not last_checkpoint:
+        print(f"no checkpoint found", file=sys.stderr)
+        sys.exit(1)
+
+    dt = datetime.strptime(last_checkpoint, "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=timezone.utc
+    )
+    age = datetime.now(timezone.utc) - dt
+    age_minutes = int(age.total_seconds() / 60)
+
+    if age > threshold:
+        print(f"stale: {age_minutes}m since last checkpoint (threshold: {threshold_minutes}m)", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print(f"fresh: {age_minutes}m since last checkpoint")
+        sys.exit(0)
+
+
 def cmd_debug_restore(args, conn, project_id, project_name, branch):
     """Show tier breakdown of restore output."""
     from momento.retrieve import retrieve_context
@@ -534,6 +600,24 @@ def main() -> None:
     search_p = subparsers.add_parser("search", help="Search knowledge")
     search_p.add_argument("query", help="Search query")
 
+    # snippet
+    snippet_p = subparsers.add_parser("snippet", help="Generate a work summary")
+    snippet_p.add_argument("--yesterday", action="store_true", help="Yesterday's summary")
+    snippet_p.add_argument("--week", action="store_true", help="Last 7 days")
+    snippet_p.add_argument("--range", dest="date_range", nargs=2, metavar=("START", "END"),
+                           help="Custom range: START END (YYYY-MM-DD)")
+    snippet_p.add_argument("--format", dest="fmt",
+                           choices=["markdown", "standup", "slack", "json"],
+                           default="markdown", help="Output format")
+    snippet_p.add_argument("--branch", type=str, default=None, help="Filter to branch")
+    snippet_p.add_argument("--all-projects", action="store_true", dest="all_projects",
+                           help="Include all projects")
+
+    # check-stale
+    check_stale_p = subparsers.add_parser("check-stale", help="Check checkpoint freshness (for hooks)")
+    check_stale_p.add_argument("--threshold", type=int, default=30,
+                                help="Stale threshold in minutes (default: 30)")
+
     # debug-restore
     debug_p = subparsers.add_parser("debug-restore", help="Show restore tier breakdown")
     debug_p.add_argument("--surface", help="Surface filter")
@@ -566,6 +650,8 @@ def main() -> None:
         "prune": cmd_prune,
         "ingest": cmd_ingest,
         "search": cmd_search,
+        "snippet": cmd_snippet,
+        "check-stale": cmd_check_stale,
         "debug-restore": cmd_debug_restore,
     }
 
