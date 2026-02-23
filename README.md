@@ -21,16 +21,20 @@
 
 ## The Problem
 
-AI coding agents forget. Every `/clear`, context overflow, or new session wipes the slate. You spend 5-10 minutes re-explaining architecture, decisions, constraints, and the bug you just fixed.
+AI coding agents forget. Every `/clear`, context overflow, or new session wipes the slate. But that's just the obvious part.
 
-And when your manager asks "what did you ship this week?" you're digging through git logs and Slack threads trying to reconstruct what happened.
+The deeper problem is **knowledge drift**. You make decisions, hit gotchas, learn patterns — and none of it sticks anywhere durable. Your CLAUDE.md goes stale after week one. Your agent operates on partial knowledge even when you've told it everything before. And when your manager asks "what did you ship this week?" you're digging through git logs and Slack threads trying to reconstruct what happened.
+
+The memory gap isn't just the agent's problem. It's yours too.
 
 ## The Solution
 
-Momento is a local memory layer that does two things:
+Momento is a local memory layer that captures, preserves, and resurfaces the knowledge generated during development:
 
-1. **Context recovery** — restores your agent's working state in under 2 seconds. Decisions made, bugs discovered, tasks in progress, and what comes next.
-2. **Work summaries** — generates daily/weekly reports from the same knowledge base your agent already uses. Standups, manager updates, team syncs — all from one SQLite file.
+1. **Context recovery** — restores your agent's working state in under 2 seconds after any context reset. Decisions, gotchas, tasks in progress, and what comes next.
+2. **Knowledge capture** — decisions, gotchas, and patterns are logged as durable entries that persist across sessions, branches, and projects.
+3. **CLAUDE.md audit** — detects drift between what Momento knows and what your agent instruction file says. Surfaces gaps, flags stale references, optionally patches the file.
+4. **Work summaries** — generates daily/weekly reports from the same knowledge base. Standups, manager updates, team syncs — all from one SQLite file.
 
 No cloud. No external dependencies. No magic.
 
