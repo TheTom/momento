@@ -257,8 +257,7 @@ def render_markdown(sections: SnippetSections, meta: SnippetMeta) -> str:
 
     if meta.empty:
         lines = [
-            f"# Momento Snippet — {meta.range_label}",
-            f"## {meta.project_name}",
+            f"# {meta.range_label} snippet — {meta.project_name}",
             "",
             "No entries found for this time range.",
             "",
@@ -266,12 +265,11 @@ def render_markdown(sections: SnippetSections, meta: SnippetMeta) -> str:
         ]
         return prefix + "\n".join(lines) + "\n"
 
-    header = f"# Momento Snippet — {meta.range_label}"
-    subheader = f"## {meta.project_name}"
+    header = f"# {meta.range_label} snippet — {meta.project_name}"
     if meta.branch:
-        subheader += f" · {meta.branch}"
+        header += f" · {meta.branch}"
 
-    lines = [header, subheader, ""]
+    lines = [header, ""]
 
     if meta.is_weekly:
         _render_weekly_markdown(sections, meta, lines)

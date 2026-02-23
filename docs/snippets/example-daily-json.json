@@ -3,7 +3,7 @@
   "branch": null,
   "range": {
     "start": "2026-02-23T00:00:00Z",
-    "end": "2026-02-23T17:00:28Z"
+    "end": "2026-02-23T17:06:59Z"
   },
   "sections": {
     "accomplished": [
@@ -85,5 +85,5 @@
   },
   "entry_count": 22,
   "empty": false,
-  "staleness_warning": "Note: Last checkpoint was 19m ago. Recent work may not be reflected. Run `momento save` or call log_knowledge() to capture latest progress."
+  "staleness_warning": "Note: Last checkpoint was 26m ago. Recent work may not be reflected. Run `momento save` or call log_knowledge() to capture latest progress."
 }

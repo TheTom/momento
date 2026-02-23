@@ -55,7 +55,7 @@ class TestFullDailyMarkdown:
             format="markdown", project_name=MOCK_PROJECT_NAME,
         )
 
-        assert "# Momento Snippet" in output
+        assert "snippet —" in output
         assert MOCK_PROJECT_NAME in output
         assert "### Accomplished" in output
         assert "### Decisions Made" in output

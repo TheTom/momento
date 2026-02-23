@@ -57,7 +57,7 @@ class TestDefaultMcpCall:
         from momento.mcp_server import generate_snippet as mcp_generate_snippet
         result = mcp_generate_snippet(range="today")
 
-        assert "Momento Snippet" in result or "No entries" in result
+        assert "snippet —" in result or "No entries" in result
 
 
 # ---------------------------------------------------------------------------

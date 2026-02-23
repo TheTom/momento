@@ -39,7 +39,7 @@ class TestDefaultInvocation:
         cmd_snippet(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
         out = capsys.readouterr().out
 
-        assert "# Momento Snippet" in out
+        assert "snippet —" in out
         assert "### " in out  # Has section headers
 
 
