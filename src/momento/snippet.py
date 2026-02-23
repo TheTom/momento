@@ -28,6 +28,7 @@ class SnippetMeta:
     entry_count: int
     empty: bool
     is_weekly: bool = False
+    staleness_warning: str = ""
 
 
 @dataclass
@@ -252,6 +253,8 @@ def group_entries(entries: list[Entry]) -> SnippetSections:
 
 def render_markdown(sections: SnippetSections, meta: SnippetMeta) -> str:
     """Render snippet as markdown."""
+    prefix = meta.staleness_warning
+
     if meta.empty:
         lines = [
             f"# Momento Snippet — {meta.range_label}",
@@ -261,7 +264,7 @@ def render_markdown(sections: SnippetSections, meta: SnippetMeta) -> str:
             "",
             "Tip: Use `momento save` or `log_knowledge()` to capture work in progress.",
         ]
-        return "\n".join(lines) + "\n"
+        return prefix + "\n".join(lines) + "\n"
 
     header = f"# Momento Snippet — {meta.range_label}"
     subheader = f"## {meta.project_name}"
@@ -275,7 +278,7 @@ def render_markdown(sections: SnippetSections, meta: SnippetMeta) -> str:
     else:
         _render_daily_markdown(sections, lines)
 
-    return "\n".join(lines).rstrip() + "\n"
+    return prefix + "\n".join(lines).rstrip() + "\n"
 
 
 def _render_daily_markdown(sections: SnippetSections, lines: list[str]) -> None:
@@ -359,10 +362,12 @@ def _render_weekly_markdown(sections: SnippetSections, meta: SnippetMeta, lines:
 
 def render_standup(sections: SnippetSections, meta: SnippetMeta) -> str:
     """Render snippet as standup format."""
+    prefix = meta.staleness_warning
+
     if meta.empty:
         if meta.is_weekly:
-            return "*This week:* No entries recorded.\n*Next week:* —\n*Blockers:* —\n"
-        return "*Yesterday:* No entries recorded.\n*Today:* —\n*Blockers:* —\n"
+            return prefix + "*This week:* No entries recorded.\n*Next week:* —\n*Blockers:* —\n"
+        return prefix + "*Yesterday:* No entries recorded.\n*Today:* —\n*Blockers:* —\n"
 
     past_label = "*This week:*" if meta.is_weekly else "*Yesterday:*"
     future_label = "*Next week:*" if meta.is_weekly else "*Today:*"
@@ -388,15 +393,16 @@ def render_standup(sections: SnippetSections, meta: SnippetMeta) -> str:
     else:
         blockers = "*Blockers:* None detected."
 
-    return f"{past}\n{future}\n{blockers}\n"
+    return prefix + f"{past}\n{future}\n{blockers}\n"
 
 
 def render_slack(sections: SnippetSections, meta: SnippetMeta) -> str:
     """Render snippet as slack format."""
+    prefix = meta.staleness_warning
     header = f"\U0001f4cb *{meta.range_label} snippet — {meta.project_name}*"
 
     if meta.empty:
-        return f"{header}\n(no entries for this period)\n"
+        return prefix + f"{header}\n(no entries for this period)\n"
 
     lines = [header]
     max_lines = 15
@@ -418,13 +424,16 @@ def render_slack(sections: SnippetSections, meta: SnippetMeta) -> str:
         extra = len(content_lines) - max_lines
         lines = [lines[0]] + content_lines[:max_lines] + [f"(+{extra} more)"]
 
-    return "\n".join(lines) + "\n"
+    return prefix + "\n".join(lines) + "\n"
 
 
 def render_json(sections: SnippetSections, meta: SnippetMeta) -> str:
     """Render snippet as JSON."""
     if meta.empty:
-        return json.dumps({"empty": True, "entry_count": 0, "sections": {}}, indent=2) + "\n"
+        result = {"empty": True, "entry_count": 0, "sections": {}}
+        if meta.staleness_warning:
+            result["staleness_warning"] = meta.staleness_warning.strip()
+        return json.dumps(result, indent=2) + "\n"
 
     def _entry_to_dict(entry: Entry, include_source_type: bool = False) -> dict:
         d = {"content": entry.content, "entry_id": entry.id}
@@ -449,6 +458,8 @@ def render_json(sections: SnippetSections, meta: SnippetMeta) -> str:
         "entry_count": meta.entry_count,
         "empty": False,
     }
+    if meta.staleness_warning:
+        result["staleness_warning"] = meta.staleness_warning.strip()
 
     return json.dumps(result, indent=2) + "\n"
 
@@ -505,6 +516,33 @@ _RENDERERS = {
 # Main generation function
 # ---------------------------------------------------------------------------
 
+_STALE_THRESHOLD_MINUTES = 10
+
+
+def _check_staleness(conn: sqlite3.Connection, project_id: str | None) -> str:
+    """Return a staleness warning string, or empty if fresh."""
+    if project_id is None:
+        return ""
+    cursor = conn.execute(
+        "SELECT MAX(created_at) FROM knowledge "
+        "WHERE project_id = ? AND type = 'session_state'",
+        (project_id,),
+    )
+    row = cursor.fetchone()
+    if not row or not row[0]:
+        return ""
+    last_ts = datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    age = datetime.now(timezone.utc) - last_ts
+    age_minutes = int(age.total_seconds() / 60)
+    if age_minutes >= _STALE_THRESHOLD_MINUTES:
+        return (
+            f"Note: Last checkpoint was {age_minutes}m ago. "
+            "Recent work may not be reflected. "
+            "Run `momento save` or call log_knowledge() to capture latest progress.\n\n"
+        )
+    return ""
+
+
 def generate_snippet(
     conn: sqlite3.Connection,
     project_id: str,
@@ -535,6 +573,7 @@ def generate_snippet(
         entry_count=len(entries),
         empty=len(entries) == 0,
         is_weekly=is_weekly,
+        staleness_warning=_check_staleness(conn, project_id),
     )
 
     if not entries:

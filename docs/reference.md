@@ -119,6 +119,44 @@ Session log ingestion extracts compaction summaries and error+resolution pairs. 
 
 Partial failures don't crash the run. Summary shows files processed, skipped, entries stored, duplicates skipped.
 
+### `momento snippet`
+
+Generate a work summary from your knowledge entries. Outputs in markdown, standup, slack, or JSON formats.
+
+```bash
+momento snippet                          # Today, markdown format
+momento snippet --yesterday              # Yesterday
+momento snippet --week                   # Past 7 days (weekly mode)
+momento snippet --range 2026-02-17 2026-02-21  # Custom date range
+momento snippet --format standup         # Standup format
+momento snippet --format slack           # Slack format
+momento snippet --format json            # JSON format
+momento snippet --branch feature/billing # Filter by branch
+momento snippet --all-projects           # Include all projects
+```
+
+| Flag | Description |
+|------|-------------|
+| `--yesterday` | Show yesterday's entries |
+| `--week` | Show past 7 days (weekly mode with Key Moments, date annotations) |
+| `--range <start> <end>` | Custom date range (YYYY-MM-DD, end is exclusive) |
+| `--format <fmt>` | Output format: `markdown` (default), `standup`, `slack`, `json` |
+| `--branch <name>` | Filter entries by branch |
+| `--all-projects` | Include entries from all projects |
+
+**Staleness warning:** If the last `session_state` checkpoint is older than 10 minutes, a note is prepended to the output (or included as a `staleness_warning` field in JSON format) suggesting you run `momento save` first.
+
+### `momento check-stale`
+
+Check if the last checkpoint is older than a threshold. Used by hooks to enforce checkpoint freshness.
+
+```bash
+momento check-stale              # Default threshold: 30 min
+momento check-stale --minutes 10 # Custom threshold
+```
+
+Exits with code 0 if fresh, code 1 if stale or no checkpoint exists.
+
 ### `momento debug-restore`
 
 Show the restore tier breakdown for debugging. Displays which entries land in which tier, token estimates, and what gets included vs skipped.
@@ -132,7 +170,7 @@ momento debug-restore --surface server
 
 ## MCP Server
 
-Momento exposes two MCP tools for AI coding agents. The server is stateless -- each call auto-resolves project, branch, and surface from the working directory.
+Momento exposes three MCP tools for AI coding agents. The server is stateless -- each call auto-resolves project, branch, and surface from the working directory.
 
 ### Setup
 
@@ -177,6 +215,17 @@ Store a knowledge entry.
 | `content` | string | Yes | The knowledge to store. Be concise and actionable. |
 | `type` | string | Yes | One of: `session_state`, `decision`, `plan`, `gotcha`, `pattern` |
 | `tags` | array | Yes | Domain tags. E.g. `["auth", "ios", "keychain"]` |
+
+#### `generate_snippet`
+
+Generate a work summary for a date range and format.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `range` | string | `"today"` | One of: `today`, `yesterday`, `week` |
+| `start_date` | string | `null` | Custom range start (YYYY-MM-DD). Overrides `range`. |
+| `end_date` | string | `null` | Custom range end (YYYY-MM-DD, exclusive). |
+| `format` | string | `"markdown"` | One of: `markdown`, `standup`, `slack`, `json` |
 
 ### Running Manually
 

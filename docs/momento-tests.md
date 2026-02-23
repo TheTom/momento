@@ -1,11 +1,11 @@
 # Momento — Test Specification
 
-> **Status:** v0.1.1 shipped. 432 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.
+> **Status:** v0.1.1 shipped. 437 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.
 
 Three parts:
 1. Pre-flight gaps found and fixed before v0.1
 2. v0.1 core tests (T1–T14, 84 specified)
-3. v0.2 snippets tests (TS1–TS10, 57 specified)
+3. v0.2 snippets tests (TS1–TS10, 62 specified)
 
 ---
 
@@ -1488,6 +1488,18 @@ When: split_session_states() runs
 Then: surface = None, key = (None, branch) -- still splits correctly
 ```
 
+**TS9.8 — Staleness warning** `must_pass`
+```
+Given: Various checkpoint ages
+When: generate_snippet() runs
+Then:
+  - Fresh checkpoint (<10 min): no staleness warning in output
+  - Stale checkpoint (>=10 min): "Note: Last checkpoint was Xm ago" prepended
+  - No session_state entries: no staleness warning
+  - Stale + empty snippet: warning still appears
+  - JSON format: staleness included as "staleness_warning" field, not text prefix
+```
+
 ---
 
 ### TS10: Weekly Mode
@@ -1536,7 +1548,7 @@ Then: "### Decisions Made (3)" with date annotations
 MUST PASS (blocks ship) -- 29 tests:
   TS1.1-1.4, TS1.7, TS2.1-2.4, TS2.7, TS3.1-3.3, TS3.5,
   TS4.1, TS4.4, TS5.1, TS5.4, TS6.1, TS6.2, TS7.1, TS7.4,
-  TS8.1, TS8.2, TS9.1, TS9.2, TS9.4, TS10.1, TS10.2
+  TS8.1, TS8.2, TS9.1, TS9.2, TS9.4, TS9.8, TS10.1, TS10.2
 
 SHOULD PASS (fix within days) -- 20 tests:
   TS1.5, TS1.6, TS1.8, TS2.5, TS2.6, TS2.8, TS3.4,
@@ -1551,13 +1563,13 @@ NICE TO HAVE:
 
 ## Overall Summary
 
-**v0.1.1: 432 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.**
+**v0.1.1: 437 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.**
 
 | Subsystem | Spec | Prefix | Status |
 |-----------|------|--------|--------|
 | v0.1 Core (T1–T14) | 84 tests | T | ALL PASSING |
-| v0.2 Snippets (TS1–TS10) | 57 tests | TS | ALL PASSING |
+| v0.2 Snippets (TS1–TS10) | 62 tests | TS | ALL PASSING |
 | Check-stale CLI | 5 tests | — | ALL PASSING |
 | Hook registration | 22 tests | — | ALL PASSING |
 | Additional coverage | 264 tests | — | ALL PASSING |
-| **Total** | **432 tests** | | **98% coverage** |
+| **Total** | **437 tests** | | **98% coverage** |

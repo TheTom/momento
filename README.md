@@ -4,14 +4,14 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests: 432 passing](https://img.shields.io/badge/tests-432_passing-brightgreen.svg)](tests/)
+[![Tests: 437 passing](https://img.shields.io/badge/tests-437_passing-brightgreen.svg)](tests/)
 [![Coverage: 98%](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)](tests/)
 
 ---
 
 ## Status
 
-**v0.1.1 shipped. In dogfood.** Snippets (v0.2) landed — work summaries in markdown, standup, slack, and JSON formats. Checkpoint enforcement hooks mechanically guarantee context is saved before sessions end. Pre-push hook gates all pushes on license headers, passing tests, and 95% coverage. 432 tests, 98% coverage. Currently testing across Codex and Claude Code in daily driver workflows.
+**v0.1.1 shipped. In dogfood.** Snippets (v0.2) landed — work summaries in markdown, standup, slack, and JSON formats with staleness warnings when checkpoints are stale. Checkpoint enforcement hooks mechanically guarantee context is saved before sessions end. Pre-push hook gates all pushes on license headers, passing tests, and 95% coverage. 437 tests, 98% coverage. Currently testing across Codex and Claude Code in daily driver workflows.
 
 ---
 
@@ -179,7 +179,7 @@ Default locations:
 
 ### Tests & Coverage
 
-**432 tests passing. 98% coverage. Pre-push hook enforces 95% minimum.**
+**437 tests passing. 98% coverage. Pre-push hook enforces 95% minimum.**
 
 ```bash
 pytest tests/ -v                    # Full suite

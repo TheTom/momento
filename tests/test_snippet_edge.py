@@ -22,6 +22,7 @@ from tests.mock_data import (
     make_snippet_durable_only,
     make_entry,
     hours_ago,
+    minutes_ago,
 )
 from tests.conftest import insert_entries
 
@@ -241,3 +242,114 @@ class TestNoSurfaceInTags:
 
     def test_surface_is_none(self):
         assert extract_surface(["auth", "billing"]) is None
+
+
+# ---------------------------------------------------------------------------
+# TS9.8 — Staleness warning
+# ---------------------------------------------------------------------------
+
+@pytest.mark.must_pass
+class TestStalenessWarning:
+    """TS9.8: staleness warning prepended when last checkpoint is old."""
+
+    def test_fresh_checkpoint_no_warning(self, db):
+        """Checkpoint <10 min old produces no staleness warning."""
+        entries = [
+            make_entry(
+                content="Recent checkpoint.", type="session_state",
+                tags=["server"], branch="main", surface="server",
+                created_at=minutes_ago(5),
+            ),
+        ]
+        insert_entries(db, entries)
+
+        start, end, _ = resolve_range(today=True)
+        output = generate_snippet(
+            db, MOCK_PROJECT_ID, start, end,
+            format="markdown", project_name=MOCK_PROJECT_NAME,
+        )
+
+        assert "Note: Last checkpoint was" not in output
+
+    def test_stale_checkpoint_shows_warning(self, db):
+        """Checkpoint >=10 min old prepends staleness note."""
+        entries = [
+            make_entry(
+                content="Old checkpoint.", type="session_state",
+                tags=["server"], branch="main", surface="server",
+                created_at=minutes_ago(15),
+            ),
+        ]
+        insert_entries(db, entries)
+
+        start, end, _ = resolve_range(today=True)
+        output = generate_snippet(
+            db, MOCK_PROJECT_ID, start, end,
+            format="markdown", project_name=MOCK_PROJECT_NAME,
+        )
+
+        assert output.startswith("Note: Last checkpoint was")
+        assert "15m ago" in output
+        assert "momento save" in output
+
+    def test_no_session_states_no_warning(self, db):
+        """No session_state entries at all -> no staleness warning."""
+        entries = [
+            make_entry(
+                content="A decision.", type="decision",
+                tags=["server"], branch="main",
+                created_at=hours_ago(1),
+            ),
+        ]
+        insert_entries(db, entries)
+
+        start, end, _ = resolve_range(today=True)
+        output = generate_snippet(
+            db, MOCK_PROJECT_ID, start, end,
+            format="markdown", project_name=MOCK_PROJECT_NAME,
+        )
+
+        assert "Note: Last checkpoint was" not in output
+
+    def test_stale_warning_on_empty_snippet(self, db):
+        """Staleness warning appears even when snippet has no entries in range."""
+        # Session state from 20 min ago (stale), but outside today's range
+        entries = [
+            make_entry(
+                content="Stale checkpoint from yesterday.", type="session_state",
+                tags=["server"], branch="main", surface="server",
+                created_at=minutes_ago(20),
+            ),
+        ]
+        insert_entries(db, entries)
+
+        # Query a range that excludes the entry
+        output = generate_snippet(
+            db, MOCK_PROJECT_ID,
+            "2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z",
+            format="markdown", project_name=MOCK_PROJECT_NAME,
+        )
+
+        assert "Note: Last checkpoint was" in output
+        assert "No entries found" in output
+
+    def test_stale_warning_json_structured(self, db):
+        """JSON format includes staleness as a structured field, not text prefix."""
+        entries = [
+            make_entry(
+                content="Old checkpoint.", type="session_state",
+                tags=["server"], branch="main", surface="server",
+                created_at=minutes_ago(15),
+            ),
+        ]
+        insert_entries(db, entries)
+
+        start, end, _ = resolve_range(today=True)
+        output = generate_snippet(
+            db, MOCK_PROJECT_ID, start, end,
+            format="json", project_name=MOCK_PROJECT_NAME,
+        )
+
+        parsed = json.loads(output)
+        assert "staleness_warning" in parsed
+        assert "15m ago" in parsed["staleness_warning"]
