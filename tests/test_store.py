@@ -542,3 +542,83 @@ def test_operational_error_during_insert(db):
     # Nothing inserted
     count = db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
     assert count == 0, "Rollback must prevent any rows from persisting"
+
+
+# ---------------------------------------------------------------------------
+# T3.11 — Invalid type rejection
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.must_pass
+def test_invalid_type_returns_specific_error(db):
+    """Invalid type like 'knowledge' should return error listing valid types."""
+    result = log_knowledge(
+        conn=db,
+        content="This should be rejected.",
+        type="knowledge",
+        tags=["test"],
+        project_id=MOCK_PROJECT_ID,
+        project_name=MOCK_PROJECT_NAME,
+        branch="main",
+    )
+
+    assert "error" in result, "Invalid type must be rejected"
+    assert "Invalid type" in result["error"]
+    assert "'knowledge'" in result["error"]
+    assert "session_state" in result["error"], "Error must list valid types"
+    assert "decision" in result["error"]
+    assert "gotcha" in result["error"]
+
+    # Nothing inserted
+    count = db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+    assert count == 0, "No entry should be inserted for invalid type"
+
+
+@pytest.mark.must_pass
+def test_invalid_type_various_values(db):
+    """Various invalid types all get rejected with specific error."""
+    for bad_type in ["knowledge", "note", "reminder", "bookmark", ""]:
+        result = log_knowledge(
+            conn=db,
+            content=f"Testing invalid type: {bad_type}",
+            type=bad_type,
+            tags=["test"],
+            project_id=MOCK_PROJECT_ID,
+            project_name=MOCK_PROJECT_NAME,
+            branch="main",
+        )
+        assert "error" in result, f"Type '{bad_type}' should be rejected"
+        assert "Invalid type" in result["error"], f"Error for '{bad_type}' should say Invalid type"
+
+
+# ---------------------------------------------------------------------------
+# T3.12 — IntegrityError includes constraint details
+# ---------------------------------------------------------------------------
+
+
+def test_integrity_error_includes_details(db):
+    """IntegrityError on non-dedup constraint should include the SQLite error string."""
+    # Simulate an IntegrityError that's NOT a dedup collision by using a
+    # trigger that raises a custom constraint error
+    db.execute("DROP TRIGGER IF EXISTS knowledge_ai")
+    db.execute("""
+        CREATE TRIGGER knowledge_ai AFTER INSERT ON knowledge BEGIN
+          SELECT RAISE(ABORT, 'custom constraint: something specific failed');
+        END
+    """)
+
+    result = log_knowledge(
+        conn=db,
+        content="This should trigger IntegrityError with details.",
+        type="decision",
+        tags=["test"],
+        project_id=MOCK_PROJECT_ID,
+        project_name=MOCK_PROJECT_NAME,
+        branch="main",
+    )
+
+    assert "error" in result
+    # Must NOT be the old opaque message
+    assert result["error"] != "Integrity constraint violation during insert."
+    # Must include the actual constraint detail
+    assert "custom constraint" in result["error"] or "Integrity constraint violation:" in result["error"]

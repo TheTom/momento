@@ -303,12 +303,33 @@ def _restore_mode(
     return RestoreResult(entries=all_entries, total_tokens=total_tokens, rendered=rendered)
 
 
+def _to_fts_or_query(query: str) -> str:
+    """Convert a raw query to FTS5 OR syntax for broad matching.
+
+    FTS5 implicit AND is too restrictive for multi-word queries —
+    "word1 word2 word3" would require ALL words present.
+    Converting to "word1 OR word2 OR word3" returns entries matching
+    ANY term, then _passes_relevance_threshold filters weak matches.
+
+    If the query already contains FTS5 boolean operators (OR, AND, NOT),
+    it's passed through unchanged to respect explicit user intent.
+    """
+    # If query already has explicit FTS5 operators, pass through
+    if re.search(r'\b(OR|AND|NOT)\b', query):
+        return query
+    terms = re.findall(r"[A-Za-z0-9_]+", query)
+    if len(terms) <= 1:
+        return query
+    return " OR ".join(terms)
+
+
 def _search_mode(
     conn: sqlite3.Connection,
     project_id: str,
     query: str,
 ) -> RestoreResult:
     """FTS5 keyword search ranked by relevance, scoped to project."""
+    fts_query = _to_fts_or_query(query)
     select_cols = (
         "k.id, k.content, k.content_hash, k.type, k.tags, k.project_id, "
         "k.project_name, k.branch, k.source_type, k.confidence, k.created_at, k.updated_at"
@@ -319,7 +340,7 @@ def _search_mode(
         "WHERE knowledge_fts MATCH ? "
         "AND (k.project_id = ? OR k.project_id IS NULL) "
         "ORDER BY rank",
-        (query, project_id),
+        (fts_query, project_id),
     ).fetchall()
 
     selected = []

@@ -2,7 +2,7 @@
 
 Deterministic state recovery for AI coding agents. Local SQLite memory layer that restores working context in <2 seconds.
 
-**Status:** v0.1.1 shipped, dogfood phase. Snippets (v0.2) implemented.
+**Status:** v0.1.2 shipped, dogfood phase. Snippets (v0.2) implemented.
 
 ## Agent Output Rules
 
@@ -62,7 +62,7 @@ tests/
   mock_data.py     # Factory functions: make_entry(), make_snippet_day/week/empty/etc.
   test_restore.py  # Core 5-tier restore contract (largest test file)
   test_snippet_*.py # 10 files covering snippets (query, grouping, rendering, CLI, MCP, edge)
-  ...              # 30 test files total, 443 tests, 98% coverage
+  ...              # 30 test files total, 450 tests, 98% coverage
 ```
 
 ## Architecture

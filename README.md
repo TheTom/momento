@@ -4,14 +4,18 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests: 443 passing](https://img.shields.io/badge/tests-443_passing-brightgreen.svg)](tests/)
+[![Tests: 450 passing](https://img.shields.io/badge/tests-450_passing-brightgreen.svg)](tests/)
 [![Coverage: 98%](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)](tests/)
 
 ---
 
 ## Status
 
-**v0.1.1 shipped. In dogfood.** Snippets (v0.2) landed — work summaries in markdown, standup, slack, and JSON formats with staleness warnings when checkpoints are stale. Checkpoint enforcement hooks mechanically guarantee context is saved before sessions end. Pre-push hook gates all pushes on license headers, passing tests, and 95% coverage. 443 tests, 98% coverage. Currently testing across Codex and Claude Code in daily driver workflows.
+**v0.1.2 shipped. In dogfood.** Snippets (v0.2) landed — work summaries in markdown, standup, slack, and JSON formats with staleness warnings when checkpoints are stale. Checkpoint enforcement hooks mechanically guarantee context is saved before sessions end. Pre-push hook gates all pushes on license headers, passing tests, and 95% coverage. 450 tests, 98% coverage. Currently testing across Codex and Claude Code in daily driver workflows.
+
+**v0.1.2 fixes:**
+- **FTS5 search**: Multi-word queries now use OR semantics instead of implicit AND — entries matching *any* search term are returned, then ranked by relevance overlap. Previously, searching "rsync deploy gotchas" required ALL words present in a single entry.
+- **MCP error messages**: `log_knowledge` now validates entry type upfront and returns specific constraint errors (e.g., `"Invalid type: 'knowledge'. Valid types: session_state, decision, plan, gotcha, pattern"`) instead of the opaque `"Integrity constraint violation during insert."`
 
 ---
 

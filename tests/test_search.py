@@ -340,6 +340,124 @@ def test_relevance_threshold_filters_weak_matches(db):
     )
 
 
+@pytest.mark.must_pass
+def test_multiword_search_finds_partial_matches(db):
+    """Multi-word queries use OR, so entries matching SOME terms are returned.
+
+    This is the fundamental search contract that was broken: FTS5 implicit AND
+    required ALL words present, so "theology deploy rsync gotchas architecture"
+    returned nothing even when individual entries matched individual terms.
+    """
+    entries = [
+        make_entry(
+            content="rsync deploy gotcha: always use --delete flag with caution on production servers.",
+            type="gotcha",
+            tags=["deploy", "rsync"],
+            branch="main",
+            project_id=MOCK_PROJECT_ID,
+        ),
+        make_entry(
+            content="Architecture decision: use microservices for billing, monolith for auth.",
+            type="decision",
+            tags=["architecture"],
+            branch="main",
+            project_id=MOCK_PROJECT_ID,
+        ),
+        make_entry(
+            content="Completely unrelated entry about CSS flexbox layouts.",
+            type="pattern",
+            tags=["css"],
+            branch="main",
+            project_id=MOCK_PROJECT_ID,
+        ),
+    ]
+    insert_entries(db, entries)
+
+    # Multi-word query — should find entries matching ANY of these terms
+    result = retrieve_context(
+        conn=db,
+        query="theology deploy rsync gotchas architecture",
+        project_id=MOCK_PROJECT_ID,
+    )
+
+    assert len(result.entries) >= 1, (
+        "Multi-word search must find entries matching partial terms (OR semantics)"
+    )
+    contents = [e.content for e in result.entries]
+    assert any("rsync" in c for c in contents) or any("Architecture" in c for c in contents), (
+        "Should find entries matching at least some query terms"
+    )
+    # CSS flexbox entry should NOT appear (no term overlap)
+    assert not any("flexbox" in c for c in contents), (
+        "Unrelated entries should not appear"
+    )
+
+
+@pytest.mark.must_pass
+def test_store_then_search_immediately(db):
+    """Fundamental contract: store an entry, search for it immediately, find it.
+
+    This is the exact scenario that was broken in production.
+    """
+    result = log_knowledge(
+        conn=db,
+        content="llamaindex chromadb hybrid retrieval pipeline with reranking.",
+        type="decision",
+        tags=["rag", "llamaindex"],
+        project_id=MOCK_PROJECT_ID,
+        project_name=MOCK_PROJECT_NAME,
+        branch="main",
+    )
+    assert result["status"] == "created"
+
+    # Search immediately — should find it
+    search_result = retrieve_context(
+        conn=db,
+        query="llamaindex chromadb hybrid retrieval",
+        project_id=MOCK_PROJECT_ID,
+    )
+
+    assert len(search_result.entries) >= 1, (
+        "Just-stored entry must be searchable immediately via multi-word query"
+    )
+    assert any("llamaindex" in e.content for e in search_result.entries)
+
+
+def test_explicit_fts_operators_preserved(db):
+    """Queries already containing OR/AND/NOT should be passed through unchanged."""
+    from momento.retrieve import _to_fts_or_query
+
+    assert _to_fts_or_query("foo OR bar") == "foo OR bar"
+    assert _to_fts_or_query("foo AND bar NOT baz") == "foo AND bar NOT baz"
+    # Single word — no conversion needed
+    assert _to_fts_or_query("rsync") == "rsync"
+    # Multi-word without operators — should get OR
+    assert _to_fts_or_query("rsync deploy gotcha") == "rsync OR deploy OR gotcha"
+
+
+def test_single_word_search_still_works(db):
+    """Single-word queries should work without OR conversion."""
+    entries = [
+        make_entry(
+            content="rsync is a powerful file synchronization tool for deployments.",
+            type="pattern",
+            tags=["deploy"],
+            branch="main",
+            project_id=MOCK_PROJECT_ID,
+        ),
+    ]
+    insert_entries(db, entries)
+
+    result = retrieve_context(
+        conn=db,
+        query="rsync",
+        project_id=MOCK_PROJECT_ID,
+    )
+
+    assert len(result.entries) >= 1, "Single-word search must work"
+    assert "rsync" in result.entries[0].content
+
+
 def test_search_with_empty_query_terms(db):
     """Search with punctuation-only query gracefully handles empty terms (covers retrieve.py:391)."""
     entries = [

@@ -8,7 +8,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 
-from momento.models import SIZE_LIMITS, SIZE_HINTS
+from momento.models import ENTRY_TYPES, SIZE_LIMITS, SIZE_HINTS
 from momento.tags import tags_to_json
 
 
@@ -26,11 +26,16 @@ def log_knowledge(
 ) -> dict:
     """Store a knowledge entry.
 
-    Validates content size (if enforce_limits=True), normalizes tags,
+    Validates type and content size (if enforce_limits=True), normalizes tags,
     computes content_hash for dedup, inserts in a transaction.
 
     Returns the created entry dict, or error dict on validation failure.
     """
+    # Type validation
+    if type not in ENTRY_TYPES:
+        valid = ", ".join(ENTRY_TYPES)
+        return {"error": f"Invalid type: '{type}'. Valid types: {valid}"}
+
     # Size validation
     if enforce_limits and type in SIZE_LIMITS:
         limit = SIZE_LIMITS[type]
@@ -79,7 +84,7 @@ def log_knowledge(
             (entry_id,),
         )
         conn.commit()
-    except sqlite3.IntegrityError:
+    except sqlite3.IntegrityError as exc:
         conn.rollback()
         # Race condition on dedup — another writer got there first
         existing = conn.execute(
@@ -89,7 +94,11 @@ def log_knowledge(
         ).fetchone()
         if existing:
             return {"id": existing[0], "status": "duplicate_skipped"}
-        return {"error": "Integrity constraint violation during insert."}
+        # Surface the actual constraint error so callers can diagnose
+        error_detail = str(exc)
+        if "content_hash" in error_detail:
+            return {"error": "Duplicate entry (identical content already exists for this project)."}
+        return {"error": f"Integrity constraint violation: {error_detail}"}
     except sqlite3.OperationalError as exc:
         conn.rollback()
         return {"error": str(exc)}
