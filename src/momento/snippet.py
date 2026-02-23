@@ -374,22 +374,22 @@ def render_standup(sections: SnippetSections, meta: SnippetMeta) -> str:
 
     # Past: accomplished items
     if sections.accomplished:
-        items = [_ensure_period(_first_line(e.content)) for e in sections.accomplished]
-        past = f"{past_label} {' '.join(items)}"
+        bullets = "\n".join(f"- {_ensure_period(_first_line(e.content))}" for e in sections.accomplished)
+        past = f"{past_label}\n{bullets}"
     else:
         past = f"{past_label} No entries recorded."
 
     # Future: in-progress items
     if sections.in_progress:
-        items = [_ensure_period(_first_line(e.content)) for e in sections.in_progress]
-        future = f"{future_label} {' '.join(items)}"
+        bullets = "\n".join(f"- {_ensure_period(_first_line(e.content))}" for e in sections.in_progress)
+        future = f"{future_label}\n{bullets}"
     else:
         future = f"{future_label} —"
 
     # Blockers: gotchas
     if sections.discovered:
-        items = [_ensure_period(_first_line(e.content)) for e in sections.discovered]
-        blockers = f"*Blockers:* {' '.join(items)}"
+        bullets = "\n".join(f"- {_ensure_period(_first_line(e.content))}" for e in sections.discovered)
+        blockers = f"*Blockers:*\n{bullets}"
     else:
         blockers = "*Blockers:* None detected."
 
