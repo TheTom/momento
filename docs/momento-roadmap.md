@@ -1,6 +1,6 @@
 # Momento — Feature Roadmap
 
-**Based on:** v0.1.0 shipped (350 tests passing)
+**Based on:** v0.1.1 shipped (432 tests passing, 98% coverage)
 **Date:** February 23, 2026
 
 ---
@@ -24,7 +24,7 @@ Every feature from v0.2 onward is a **read-path view** over existing data — or
 
 | Feature | Type | New Schema? | Description |
 |---------|------|-------------|-------------|
-| **Snippets** | CLI + MCP | No | Daily/weekly/custom work summaries. "What did I accomplish?" Standup, markdown, slack formats. **Headline feature.** |
+| ~~**Snippets**~~ | CLI + MCP | No | ~~Daily/weekly/custom work summaries. Standup, markdown, slack, JSON formats.~~ **SHIPPED v0.1.1** |
 | **Decision Log** | CLI | No | Chronological decision history with rejected alternatives. Branch-filterable. `momento decisions` |
 | **Gotcha Map** | CLI | No | Surface-scoped pitfall reference. All gotchas grouped by surface. `momento gotchas` |
 | **Handoff** | CLI | No | Cross-agent briefing document. Narrative format for pasting into new sessions. `momento handoff` |
@@ -36,7 +36,7 @@ Every feature from v0.2 onward is a **read-path view** over existing data — or
 **Ship criteria:** Snippets daily digest works reliably on real project data. All features are read-only views over existing v0.1 schema.
 
 **Implementation order:**
-1. Snippets (CLI + MCP) — highest standalone value
+1. ~~Snippets (CLI + MCP)~~ — **DONE**
 2. Decision Log + Gotcha Map — trivial once Snippets query infrastructure exists
 3. Momentum — shares same time-range query patterns
 4. Handoff + Export — different templates over same data
