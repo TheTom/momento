@@ -17,3 +17,5 @@ htmlcov/
 .venv/
 env/
 venv/
+.DS_Store
+.codex_instructions.md
