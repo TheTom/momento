@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Momento — See It Work</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#060609;--surface:#0b0b12;--s2:#111119;--s3:#191923;--s4:#1f1f2d;
+  --border:#262638;--bhi:#363650;
+  --text:#dcdce8;--dim:#8a8aa4;--muted:#50506a;--faint:#2e2e42;
+  --green:#5ce0aa;--gdim:rgba(92,224,170,.07);--gborder:rgba(92,224,170,.22);
+  --red:#ef6461;--rdim:rgba(239,100,97,.07);--rborder:rgba(239,100,97,.22);
+  --orange:#f0b429;--odim:rgba(240,180,41,.07);
+  --blue:#5b9cf5;--bdim:rgba(91,156,245,.06);
+  --purple:#9b7afa;--pdim:rgba(155,122,250,.05);--pborder:rgba(155,122,250,.16);
+  --cyan:#2dd4bf;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased}
+
+section{max-width:720px;margin:0 auto;padding:0 32px}
+.wide-section{max-width:960px;margin:0 auto;padding:0 32px}
+
+/* Hero */
+.hero{padding:80px 32px 60px;max-width:720px;margin:0 auto;text-align:center}
+.hero-badge{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:16px}
+.hero h1{font-family:'Instrument Serif',serif;font-size:clamp(36px,5vw,52px);font-weight:400;color:var(--text);line-height:1.15;margin-bottom:20px}
+.hero h1 em{color:var(--green);font-style:italic}
+.hero p{font-size:17px;color:var(--dim);line-height:1.7;max-width:520px;margin:0 auto}
+
+/* Divider */
+.divider{height:1px;background:var(--border);margin:56px auto;max-width:720px}
+.divider.short{max-width:120px;margin:48px auto}
+
+/* Timestamp */
+.ts{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px;letter-spacing:.5px}
+
+/* Narration */
+.narr{font-size:17px;color:var(--dim);line-height:1.75;margin-bottom:24px}
+.narr strong{color:var(--text);font-weight:500}
+.narr em{color:var(--muted)}
+
+/* Section title */
+.stitle{font-family:'Instrument Serif',serif;font-size:28px;font-weight:400;color:var(--text);margin-bottom:20px;line-height:1.3}
+.stitle.green{color:var(--green)}
+.stitle.red{color:var(--red)}
+
+/* Work list */
+.worklist{list-style:none;margin:20px 0 24px;padding-left:0}
+.worklist li{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--dim);padding:6px 0 6px 24px;position:relative;line-height:1.5}
+.worklist li::before{content:'✓';position:absolute;left:0;color:var(--green);font-weight:700}
+
+/* Saved entry card */
+.saved{border:1px solid var(--pborder);background:var(--pdim);border-radius:8px;padding:16px 20px;margin:20px 0}
+.saved-head{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--purple);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.saved-head::before{content:'⚡'}
+.saved-type{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px;margin-left:auto}
+.saved-type.ss{background:var(--odim);color:var(--orange);border:1px solid var(--orange)}
+.saved-type.dec{background:var(--bdim);color:var(--blue);border:1px solid var(--blue)}
+.saved-body{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);line-height:1.7}
+.saved-body strong{color:var(--text);font-weight:600}
+
+/* Switch moment */
+.switch-moment{text-align:center;padding:56px 32px;max-width:720px;margin:0 auto}
+.switch-icon{font-size:48px;margin-bottom:16px}
+.switch-moment h2{font-family:'Instrument Serif',serif;font-size:32px;color:var(--text);margin-bottom:12px}
+.switch-moment p{font-size:16px;color:var(--dim);max-width:440px;margin:0 auto;line-height:1.6}
+
+/* Split comparison */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin:40px 0;border-radius:12px;overflow:hidden}
+@media(max-width:800px){.split{grid-template-columns:1fr;gap:16px;border-radius:0;overflow:visible}
+  .split-pane{border-radius:12px !important}}
+.split-pane{padding:32px 28px}
+.split-pane.without{background:var(--rdim);border:1px solid var(--rborder)}
+.split-pane.with{background:var(--gdim);border:1px solid var(--gborder)}
+.split-label{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px}
+.split-label.bad{color:var(--red)}
+.split-label.good{color:var(--green)}
+.split-pane h3{font-family:'Instrument Serif',serif;font-size:22px;margin-bottom:14px;line-height:1.3}
+.split-pane.without h3{color:var(--red)}
+.split-pane.with h3{color:var(--green)}
+.split-list{list-style:none;padding:0;margin:0}
+.split-list li{font-size:14px;color:var(--dim);padding:5px 0 5px 20px;position:relative;line-height:1.5}
+.split-list li::before{position:absolute;left:0;font-weight:700}
+.split-pane.without .split-list li::before{content:'✗';color:var(--red)}
+.split-pane.with .split-list li::before{content:'✓';color:var(--green)}
+.split-time{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;margin-top:16px;padding-top:12px;border-top:1px solid}
+.split-pane.without .split-time{color:var(--red);border-color:var(--rborder)}
+.split-pane.with .split-time{color:var(--green);border-color:var(--gborder)}
+
+/* Restore card */
+.restore{border:1px solid var(--gborder);background:var(--gdim);border-radius:10px;padding:20px 24px;margin:24px 0}
+.restore-head{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--green);margin-bottom:14px}
+.restore-head::before{content:'↩ '}
+.restore-sect{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--text);margin-top:12px;margin-bottom:4px}
+.restore-sect:first-of-type{margin-top:0}
+.restore-line{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);padding-left:14px;line-height:1.7}
+.restore-entry{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--blue);margin-top:8px}
+.restore-meta{font-weight:400;font-size:10px;color:var(--muted);margin-left:4px}
+
+/* Agent chat */
+.chat{margin:24px 0;display:flex;flex-direction:column;gap:12px}
+.chat-you{align-self:flex-start;background:var(--s3);border:1px solid var(--border);border-radius:14px 14px 14px 4px;padding:12px 18px;max-width:80%;font-size:15px;color:var(--text)}
+.chat-you::before{content:'You';display:block;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+.chat-agent{align-self:flex-end;background:var(--bdim);border:1px solid rgba(91,156,245,.12);border-radius:14px 14px 4px 14px;padding:12px 18px;max-width:85%;font-size:15px;color:var(--text);line-height:1.6}
+.chat-agent::before{content:attr(data-who);display:block;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+
+/* Takeaway */
+.takeaway{text-align:center;padding:64px 32px 48px;max-width:720px;margin:0 auto}
+.takeaway h2{font-family:'Instrument Serif',serif;font-size:36px;color:var(--text);margin-bottom:16px;line-height:1.2}
+.takeaway h2 em{color:var(--green);font-style:italic}
+.takeaway p{font-size:17px;color:var(--dim);line-height:1.7;max-width:480px;margin:0 auto 12px}
+
+/* Footer */
+.foot{text-align:center;padding:32px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.5px;border-top:1px solid var(--border);margin-top:40px;max-width:720px;margin-left:auto;margin-right:auto}
+
+/* Scroll reveal */
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .6s ease,transform .6s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-badge">Momento · Simulation</div>
+  <h1>You switch agents mid-work.<br><em>What happens to your context?</em></h1>
+  <p>A realistic walkthrough. Same project, two different AI coding agents, one mid-day switch. No idealized demo — just a normal Tuesday.</p>
+</div>
+
+<div class="divider"></div>
+
+<section class="reveal">
+  <div class="ts">The Project</div>
+  <p class="narr">SaaS app. Node backend, Swift iOS client. Stripe billing, server-side auth. The kind of codebase where decisions made on Tuesday affect Wednesday's debugging.</p>
+  <p class="narr">You start the day in <strong>Claude Code</strong>. After lunch, you'll switch to <strong>Codex</strong> for a different iteration style. Same repo. Different brain.</p>
+</section>
+
+<div class="divider short"></div>
+
+<!-- Part 1 -->
+<section class="reveal">
+  <div class="ts">10:00 AM — Claude Code</div>
+  <div class="stitle">Backend subscription upgrades</div>
+  <p class="narr">You're implementing the upgrade flow. Endpoint, Stripe integration, webhook handling. The kind of work where each decision constrains the next one.</p>
+
+  <ul class="worklist">
+    <li>Created POST /api/upgrade endpoint</li>
+    <li>Stripe checkout session created server-side</li>
+    <li>Idempotent upgrade state check in SubscriptionService</li>
+    <li>Fixed race condition — webhook firing before client state refresh</li>
+  </ul>
+
+  <p class="narr">As you work, Claude checkpoints at natural boundaries. You don't ask for this — the <strong>agent is instructed to save</strong> after completing significant work. It happens quietly.</p>
+</section>
+
+<section class="reveal">
+  <p class="narr">Two entries get saved to Momento:</p>
+
+  <div class="saved">
+    <div class="saved-head">Saved automatically <span class="saved-type ss">session_state</span></div>
+    <div class="saved-body">
+      Upgrade endpoint implemented. Stripe checkout session server-side. Webhook race condition fixed by persisting state before event emit. <strong>Next: reconcile subscription status on client refresh.</strong>
+    </div>
+  </div>
+
+  <div class="saved">
+    <div class="saved-head">Saved automatically <span class="saved-type dec">decision</span></div>
+    <div class="saved-body">
+      <strong>Decision:</strong> Server-side Stripe checkout<br>
+      <strong>Rationale:</strong> Avoid exposing secret keys in client<br>
+      <strong>Rejected:</strong> Client-generated checkout<br>
+      <strong>Implications:</strong> Webhook reconciliation required
+    </div>
+  </div>
+
+  <p class="narr"><em>You keep working. Everything feels normal. You don't think about memory. That's the point.</em></p>
+</section>
+
+<div class="divider"></div>
+
+<!-- The switch -->
+<div class="switch-moment reveal">
+  <div class="switch-icon">⚡</div>
+  <h2>11:30 AM — You switch agents</h2>
+  <p>You close Claude Code. Open Codex in the same repository. Brand new session. Codex has zero memory of what happened this morning.</p>
+</div>
+
+<div class="divider"></div>
+
+<!-- The split -->
+<div class="wide-section reveal">
+  <div class="split">
+    <div class="split-pane without">
+      <div class="split-label bad">Without Momento</div>
+      <h3>You have to re-teach everything</h3>
+      <ul class="split-list">
+        <li>Explain the upgrade endpoint exists</li>
+        <li>Describe why Stripe is server-side</li>
+        <li>Mention the race condition you already fixed</li>
+        <li>Re-state the idempotency logic</li>
+        <li>Reconstruct what still needs to be done</li>
+        <li>Hope you don't forget a constraint</li>
+      </ul>
+      <div class="split-time">5-10 minutes</div>
+    </div>
+    <div class="split-pane with">
+      <div class="split-label good">With Momento</div>
+      <h3>Codex already knows</h3>
+      <ul class="split-list">
+        <li>Active task and next step retrieved</li>
+        <li>Architectural decision with rationale</li>
+        <li>Race condition flagged as known gotcha</li>
+        <li>No re-explaining required</li>
+        <li>No context gap to fall into</li>
+        <li>Oriented before you finish typing</li>
+      </ul>
+      <div class="split-time">&lt; 1 second</div>
+    </div>
+  </div>
+</div>
+
+<div class="divider short"></div>
+
+<!-- The restore -->
+<section class="reveal">
+  <div class="ts">11:30 AM — Codex session starts</div>
+  <div class="stitle green">Momento restores context</div>
+  <p class="narr">Before you even finish typing your first prompt, the new agent has context.</p>
+  <p class="narr">When the Codex session starts, it automatically retrieves context for the current project. Momento returns what matters — structured, concise, under a second. It does not replay the conversation. It restores the distilled state of the project:</p>
+
+  <div class="restore">
+    <div class="restore-head">Momento restore</div>
+    <div class="restore-sect">Active Task <span class="restore-meta">session_state | server | main | 10m ago</span></div>
+    <div class="restore-line">Upgrade endpoint implemented.</div>
+    <div class="restore-line">Stripe checkout session server-side.</div>
+    <div class="restore-line">Webhook race condition fixed.</div>
+    <div class="restore-line">Next: subscription status reconciliation on client refresh.</div>
+
+    <div class="restore-entry">Server-Side Stripe Checkout <span class="restore-meta">decision | 1d ago</span></div>
+    <div class="restore-line">Rationale: Protect secret keys. Webhook required for reconciliation.</div>
+
+    <div class="restore-entry">Webhook Race Condition <span class="restore-meta">gotcha | server | 3d ago</span></div>
+    <div class="restore-line">Persist upgrade state before emitting webhook event.</div>
+    <div class="restore-line">Otherwise subscription status remains PENDING.</div>
+  </div>
+
+  <p class="narr">Codex reads this and is immediately oriented to the current state of the project.</p>
+</section>
+
+<div class="divider short"></div>
+
+<!-- The result -->
+<section class="reveal">
+  <div class="ts">What happens next</div>
+
+  <div class="chat">
+    <div class="chat-you">Continue the upgrade flow. Add reconciliation on app refresh.</div>
+    <div class="chat-agent" data-who="Codex 5.3">You already implemented the upgrade endpoint and fixed the webhook race condition. The remaining step is reconciling subscription status on client refresh. I'll add a status check in BillingViewModel on app foreground.</div>
+  </div>
+
+  <p class="narr">No re-explaining. No missing context. No rediscovering bugs you already fixed. No undoing decisions you already made.</p>
+  <p class="narr"><em>You continue working as if nothing changed.</em></p>
+</section>
+
+<div class="divider"></div>
+
+<!-- Why it matters -->
+<section class="reveal">
+  <div class="stitle">Why this matters</div>
+  <p class="narr">Different agents have different strengths. You might like <strong>Claude for architectural reasoning</strong>. You might prefer <strong>Codex for tight refactors</strong>. You might use something else tomorrow.</p>
+  <p class="narr">Momento makes the agent interchangeable. Your project memory stays stable. Your tool can change. The memory layer stays constant. The reasoning engine can change.</p>
+</section>
+
+<div class="divider"></div>
+
+<!-- Branch scenario -->
+<section class="reveal">
+  <div class="ts">Bonus: Two Branches, One Repo</div>
+  <div class="stitle">What about parallel work?</div>
+  <p class="narr">Same project. Two branches. Radically different context.</p>
+  <p class="narr"><strong>9:00 AM on <code>main</code>:</strong> Fix an auth bug. JWT refresh timing issue. Save a gotcha about token race conditions.</p>
+  <p class="narr"><strong>10:30 AM on <code>feature/billing-rewrite</code>:</strong> Replacing JWT with session tokens entirely. Different architecture. Save a decision about the new auth model.</p>
+  <p class="narr">When you restore on <code>feature/billing-rewrite</code>:</p>
+
+  <div class="restore">
+    <div class="restore-head">Momento restore <span class="restore-meta">branch: feature/billing-rewrite | surface: server</span></div>
+    <div class="restore-sect">Active Task <span class="restore-meta">session_state | feature/billing-rewrite | 15m ago</span></div>
+    <div class="restore-line">Replacing JWT auth with session tokens. New SessionManager implemented.</div>
+    <div class="restore-line">Next: migrate refresh logic to session-based flow.</div>
+
+    <div class="restore-entry">Session Token Architecture <span class="restore-meta">decision | feature/billing-rewrite | 20m ago</span></div>
+    <div class="restore-line">Replacing JWT with server-side sessions. Rationale: simpler rotation, no client-side token storage.</div>
+
+    <div class="restore-entry">JWT Token Race Condition <span class="restore-meta">gotcha | main | 2h ago</span></div>
+    <div class="restore-line">Persist token state before emitting refresh event. Still relevant as migration reference.</div>
+  </div>
+
+  <p class="narr">Branch-specific work surfaces first. The <code>main</code> gotcha still appears — it's relevant context for the migration — but it's ranked lower. No isolation. No contamination. Just preference.</p>
+  <p class="narr"><em>Memory is ranked, not partitioned.</em></p>
+</section>
+
+<div class="divider short"></div>
+
+<div class="takeaway reveal">
+  <h2>New brain.<br><em>Same memory.</em></h2>
+  <p>That is the difference between restarting and continuing.</p>
+</div>
+
+<div class="foot">
+  Momento v0.9 · Two tools. Agent-agnostic. Branch-aware. Local-first. Deterministic.
+</div>
+
+<script>
+const obs = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+</script>
+</body>
+</html>
