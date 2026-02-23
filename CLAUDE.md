@@ -2,7 +2,7 @@
 
 Deterministic state recovery for AI coding agents. Local SQLite memory layer that restores working context in <2 seconds.
 
-**Status:** v0.1.2 shipped, dogfood phase. Snippets (v0.2) implemented.
+**Status:** v0.1.3 shipped, dogfood phase. Audit + Snippets implemented.
 
 ## Agent Output Rules
 
@@ -43,7 +43,8 @@ momento snippet
 
 ```
 src/momento/
-  cli.py           # 12-command argparse CLI
+  audit.py         # CLAUDE.md audit (compare, report, fix)
+  cli.py           # 13-command argparse CLI
   mcp_server.py    # MCP server (3 tools: retrieve_context, log_knowledge, generate_snippet)
   db.py            # SQLite schema, WAL, FTS5 triggers, migrations
   retrieve.py      # 5-tier deterministic restore + FTS5 search
@@ -62,7 +63,8 @@ tests/
   mock_data.py     # Factory functions: make_entry(), make_snippet_day/week/empty/etc.
   test_restore.py  # Core 5-tier restore contract (largest test file)
   test_snippet_*.py # 10 files covering snippets (query, grouping, rendering, CLI, MCP, edge)
-  ...              # 30 test files total, 454 tests, 98% coverage
+  test_audit.py    # CLAUDE.md audit tests (60 tests)
+  ...              # 31 test files total, 514 tests, 97% coverage
 ```
 
 ## Architecture
@@ -172,6 +174,7 @@ momento prune           # Delete by ID, filter, or --auto
 momento search "<q>"    # FTS5 keyword search
 momento snippet         # Work summary (--yesterday, --week, --format)
 momento ingest          # Import Claude Code session logs
+momento audit-claude-md # Compare CLAUDE.md against Momento knowledge
 momento check-stale     # Checkpoint freshness check (for hooks)
 momento debug-restore   # Show restore tier breakdown
 ```
@@ -190,6 +193,7 @@ Setup registers: MCP server in Claude Code + Codex, CLAUDE.md adapter, checkpoin
 
 | Task | Start Here |
 |------|-----------|
+| Change audit behavior | `audit.py` (thresholds, overlap, fix logic) |
 | Add new entry type | `models.py` → `store.py` → `retrieve.py` |
 | Add CLI command | `cli.py` (add cmd_*, subparser, dispatch entry) |
 | Add MCP tool | `mcp_server.py` (add @server.tool function) |

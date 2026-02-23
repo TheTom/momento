@@ -4,14 +4,14 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests: 454 passing](https://img.shields.io/badge/tests-454_passing-brightgreen.svg)](tests/)
-[![Coverage: 98%](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)](tests/)
+[![Tests: 514 passing](https://img.shields.io/badge/tests-514_passing-brightgreen.svg)](tests/)
+[![Coverage: 97%](https://img.shields.io/badge/coverage-97%25-brightgreen.svg)](tests/)
 
 ---
 
 ## Status
 
-**v0.1.2 shipped. In dogfood.** Snippets (v0.2) landed — work summaries in markdown, standup, slack, and JSON formats with staleness warnings when checkpoints are stale. Checkpoint enforcement hooks mechanically guarantee context is saved before sessions end. Pre-push hook gates all pushes on license headers, passing tests, and 95% coverage. 454 tests, 98% coverage. Currently testing across Codex and Claude Code in daily driver workflows.
+**v0.1.3 shipped. In dogfood.** CLAUDE.md audit landed — `momento audit-claude-md` compares durable Momento entries against CLAUDE.md, reports gaps both directions, checks global adapter health, optionally patches the file. Snippets for work summaries. Checkpoint enforcement hooks. Pre-push hook gates all pushes on license headers, passing tests, and 95% coverage. 514 tests, 97% coverage.
 
 **v0.1.2 fixes:**
 - **FTS5 search**: Multi-word queries now use OR semantics instead of implicit AND — entries matching *any* search term are returned, then ranked by relevance overlap. Previously, searching "rsync deploy gotchas" required ALL words present in a single entry.
@@ -106,12 +106,52 @@ Also available via MCP: `generate_snippet(range="today", format="markdown")`.
 
 ---
 
+## CLAUDE.md Audit
+
+CLAUDE.md files go stale. You accumulate weeks of decisions, gotchas, and patterns in Momento but never update CLAUDE.md. The agent reads CLAUDE.md every session but only calls Momento when instructed. Silent drift.
+
+`momento audit-claude-md` compares durable Momento entries against your CLAUDE.md, reports gaps both directions, checks global adapter health, and optionally patches the file.
+
+```bash
+momento audit-claude-md              # report only
+momento audit-claude-md --fix        # auto-patch CLAUDE.md
+momento audit-claude-md --dry-run    # preview changes
+```
+
+Example output:
+
+```
+MISSING FROM CLAUDE.md — Momento knows, CLAUDE.md doesn't
+────────────────────────────────────────────────────
+
+Gotchas (2 not mentioned):
+
+  ⚠ BM25 retrieval falls back to vector-only above 20k vectors.
+    (logged 12d ago · tags: bm25, retrieval)
+
+Decisions (1 not mentioned):
+
+  📌 Switched from OpenAI embeddings to all-MiniLM-L6-v2.
+    (logged 11d ago · tags: embeddings, cost)
+
+SUMMARY
+────────────────────────────────────────────────────
+
+  CLAUDE.md coverage: 58% of durable Momento knowledge
+  Run `momento audit-claude-md --fix` to append missing entries.
+```
+
+`--fix` backs up to `.bak`, appends entries under matching section headers, and never touches `~/.claude/CLAUDE.md` (prints suggestion instead).
+
+---
+
 ## Key Features
 
 - **Deterministic 5-tier restore** -- same inputs always produce identical output, no probabilistic scoring
 - **SQLite + FTS5** -- zero external dependencies, single file, BM25 keyword search built in
 - **MCP integration** -- three tools (`retrieve_context`, `log_knowledge`, `generate_snippet`), works with any MCP-compatible agent
-- **12-command CLI** -- full control over your knowledge base from the terminal
+- **CLAUDE.md audit** -- detect drift between Momento knowledge and your agent instruction file
+- **13-command CLI** -- full control over your knowledge base from the terminal
 - **Work summaries (Snippets)** -- generate daily/weekly summaries in markdown, standup, slack, or JSON
 - **Checkpoint enforcement** -- hooks block session end if no checkpoint in 30+ min, auto-remind on resume
 - **Cross-agent continuity** -- Claude Code saves, Codex restores (or any combination)
@@ -157,6 +197,7 @@ For full setup including MCP server registration and agent adapters:
 | `momento snippet` | Work summary (daily/weekly, markdown/standup/slack/json) |
 | `momento ingest` | Import from Claude Code session logs |
 | `momento check-stale` | Checkpoint freshness check (used by hooks) |
+| `momento audit-claude-md` | Audit CLAUDE.md against Momento knowledge |
 | `momento debug-restore` | Show restore tier breakdown for debugging |
 
 See [docs/reference.md](docs/reference.md) for full CLI reference with all flags and examples.
@@ -228,7 +269,7 @@ Default locations:
 
 ### Tests & Coverage
 
-**454 tests passing. 98% coverage. Pre-push hook enforces 95% minimum.**
+**514 tests passing. 97% coverage. Pre-push hook enforces 95% minimum.**
 
 ```bash
 pytest tests/ -v                    # Full suite
@@ -240,7 +281,8 @@ Coverage by module:
 
 | Module | Coverage |
 |--------|----------|
-| `cli.py` | 99% |
+| `audit.py` | 98% |
+| `cli.py` | 95% |
 | `db.py` | 100% |
 | `identity.py` | 100% |
 | `ingest.py` | 100% |
@@ -253,7 +295,7 @@ Coverage by module:
 | `surface.py` | 100% |
 | `tags.py` | 100% |
 | `tokens.py` | 100% |
-| **Total** | **98%** |
+| **Total** | **97%** |
 
 Run coverage locally:
 
@@ -266,7 +308,8 @@ pytest tests/ --cov=momento --cov-branch --cov-report=term-missing
 ```
 src/momento/
   __init__.py       # Version
-  cli.py            # Argparse CLI (12 commands)
+  audit.py          # CLAUDE.md audit (compare, report, fix)
+  cli.py            # Argparse CLI (13 commands)
   db.py             # Schema, WAL, FTS5 triggers, migrations
   identity.py       # Git-based project resolution
   ingest.py         # JSONL batch ingestion + session log extraction
@@ -283,6 +326,7 @@ src/momento/
 tests/
   conftest.py       # Fixtures: db, populated_db, insert helpers
   mock_data.py      # Factory functions for test scenarios
+  test_audit.py     # CLAUDE.md audit tests (60 tests)
   test_cli.py       # CLI command tests (including check-stale)
   test_concurrency.py
   test_continuity.py
@@ -312,6 +356,7 @@ tests/
 | **v0.1** | Core restore, CLI, FTS5 search **(shipped)** |
 | **v0.1.1** | Snippets, checkpoint hooks, pre-push gate, output rules **(shipped)** |
 | **v0.1.2** | FTS5 search fix, MCP error messages, adapter upgrade **(shipped)** |
+| **v0.1.3** | CLAUDE.md audit **(shipped)** |
 | v0.2 | Session tracking, CLAUDE.md export, watchdog |
 | v0.3 | Vector embeddings (hybrid BM25 + semantic), multi-editor adapters |
 | v0.4 | CI promotion, retrieval analytics |

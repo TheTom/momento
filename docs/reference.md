@@ -157,6 +157,42 @@ momento check-stale --minutes 10 # Custom threshold
 
 Exits with code 0 if fresh, code 1 if stale or no checkpoint exists.
 
+### `momento audit-claude-md`
+
+Compare durable Momento entries against CLAUDE.md. Reports gaps both directions and checks global adapter health. Optionally patches the file.
+
+```bash
+momento audit-claude-md                  # audit, report only
+momento audit-claude-md --fix            # append missing entries to CLAUDE.md
+momento audit-claude-md --dry-run        # show what --fix would do, don't write
+momento audit-claude-md --force          # skip maturity threshold
+momento audit-claude-md --global-only    # audit only ~/.claude/CLAUDE.md
+momento audit-claude-md --project-only   # audit only project CLAUDE.md
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--fix` | false | Append missing Momento entries to CLAUDE.md |
+| `--dry-run` | false | Preview what `--fix` would do without writing |
+| `--force` | false | Skip maturity threshold check |
+| `--global-only` | false | Only audit `~/.claude/CLAUDE.md` |
+| `--project-only` | false | Only audit project CLAUDE.md |
+
+**Exit codes:**
+- 0 -- audit complete (with or without gaps found)
+- 1 -- no project detected, or CLAUDE.md not found
+- 2 -- below maturity threshold (without `--force`)
+
+**Maturity threshold:** Requires at least 10 total entries, 4 durable entries (decision/gotcha/pattern), 2 distinct durable types, and 3 days with entries. Use `--force` to skip.
+
+**Report sections:**
+1. Missing from CLAUDE.md -- Momento entries not mentioned in CLAUDE.md
+2. Stale references -- CLAUDE.md identifiers not backed by any Momento entry
+3. Global adapter issues -- checks `~/.claude/CLAUDE.md` for retrieve_context, log_knowledge, etc.
+4. Summary -- coverage percentage and gap counts
+
+**Fix mode:** `--fix` backs up to `.bak`, then appends missing entries under matching section headers (or creates fallback headers). Never modifies `~/.claude/CLAUDE.md` -- prints suggestion instead. Idempotent: won't duplicate entries on repeat runs.
+
 ### `momento debug-restore`
 
 Show the restore tier breakdown for debugging. Displays which entries land in which tier, token estimates, and what gets included vs skipped.

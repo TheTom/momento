@@ -1,11 +1,12 @@
 # Momento — Test Specification
 
-> **Status:** v0.1.1 shipped. 454 tests passing, 98% coverage. Pre-push hook enforces 95% minimum.
+> **Status:** v0.1.3 shipped. 514 tests passing, 97% coverage. Pre-push hook enforces 95% minimum.
 
-Three parts:
+Four parts:
 1. Pre-flight gaps found and fixed before v0.1
 2. v0.1 core tests (T1–T14, 84 specified)
 3. v0.2 snippets tests (TS1–TS10, 62 specified)
+4. v0.2 audit tests (TA1–TA10, 60 specified)
 
 ---
 
@@ -1581,7 +1582,126 @@ NICE TO HAVE:
 |-----------|------|--------|--------|
 | v0.1 Core (T1–T14) | 84 tests | T | ALL PASSING |
 | v0.2 Snippets (TS1–TS10) | 68 tests | TS | ALL PASSING |
+| v0.2 Audit (TA1–TA10) | 60 tests | TA | ALL PASSING |
 | Check-stale CLI | 5 tests | — | ALL PASSING |
 | Hook registration | 22 tests | — | ALL PASSING |
 | Additional coverage | 264 tests | — | ALL PASSING |
-| **Total** | **454 tests** | | **98% coverage** |
+| **Total** | **514 tests** | | **97% coverage** |
+
+---
+
+## Part 4: v0.2 Audit Tests (TA1–TA10)
+
+Tests for `momento audit-claude-md` — CLAUDE.md comparison against durable Momento entries.
+
+**File:** `tests/test_audit.py` (60 tests)
+
+### TA1 — Term Extraction & Overlap (12 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TA1.1 | `test_removes_stopwords` | Common English stopwords filtered |
+| TA1.2 | `test_removes_code_stopwords` | Programming terms filtered |
+| TA1.3 | `test_keeps_identifiers` | Filenames, env vars, paths preserved |
+| TA1.4 | `test_min_length_3` | Terms <3 chars dropped |
+| TA1.5 | `test_lowercases` | All terms lowercased |
+| TA1.6 | `test_empty_string` | Empty input returns empty set |
+| TA1.7 | `test_splits_on_punctuation` | Regex tokenizer handles mixed punctuation |
+| TA1.8 | `test_full_match` | 100% overlap when all terms present |
+| TA1.9 | `test_no_match` | 0% overlap when no terms match |
+| TA1.10 | `test_partial_match` | 50% overlap with half terms present |
+| TA1.11 | `test_empty_terms` | Empty term set returns 0.0 |
+| TA1.12 | `test_case_insensitive` | Overlap is case-insensitive |
+
+### TA2 — Project Identifier Detection (5 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TA2.1 | `test_filenames` | `.py`, `.ts` detected as identifiers |
+| TA2.2 | `test_identifiers_with_underscores` | `_` terms detected |
+| TA2.3 | `test_env_vars` | ALL_CAPS detected |
+| TA2.4 | `test_paths` | `/` terms detected |
+| TA2.5 | `test_generic_words` | Plain words not flagged |
+
+### TA3 — Maturity Threshold (6 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TA3.1 | `test_passes_when_all_conditions_met` | All 4 thresholds satisfied |
+| TA3.2 | `test_fails_insufficient_total` | <10 total entries fails |
+| TA3.3 | `test_fails_insufficient_durable` | <4 durable entries fails |
+| TA3.4 | `test_fails_insufficient_types` | <2 distinct types fails |
+| TA3.5 | `test_fails_insufficient_days` | <3 days fails |
+| TA3.6 | `test_force_bypass` | --force skips check |
+
+### TA4 — Missing Entries (5 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TA4.1 | `test_all_missing` | Every entry flagged when CLAUDE.md unrelated |
+| TA4.2 | `test_all_present` | Zero missing when all terms covered |
+| TA4.3 | `test_partial_overlap` | Mixed coverage correctly splits |
+| TA4.4 | `test_excludes_session_state_and_plan` | Only durable types audited |
+| TA4.5 | `test_uses_tags_in_overlap` | Tags count toward overlap score |
+
+### TA5 — Stale References (4 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TA5.1 | `test_detects_orphaned_filenames` | Filenames not in Momento flagged |
+| TA5.2 | `test_detects_env_vars` | Env vars not in Momento flagged |
+| TA5.3 | `test_ignores_generic_words` | Plain words not flagged as stale |
+| TA5.4 | `test_no_stale` | Clean file produces empty stale list |
+
+### TA6 — Global Adapter Checks (4 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TA6.1 | `test_all_present` | All 4 checks pass when text complete |
+| TA6.2 | `test_missing_retrieve_context` | Critical check fails correctly |
+| TA6.3 | `test_missing_all` | All checks fail on empty text |
+| TA6.4 | `test_critical_flag` | At least 2 checks marked critical |
+
+### TA7 — Fix Mode (8 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TA7.1 | `test_appends_under_existing_section` | Entries placed in matching section |
+| TA7.2 | `test_creates_fallback_headers` | New sections created when none match |
+| TA7.3 | `test_idempotent_no_duplicates` | Repeat fix skips existing content |
+| TA7.4 | `test_creates_backup` | `.bak` file created before write |
+| TA7.5 | `test_dry_run_no_write` | Dry run reports changes, doesn't write |
+| TA7.6 | `test_creates_claude_md_if_missing` | Fix creates file when absent |
+| TA7.7 | `test_fix_never_modifies_global` | Global CLAUDE.md never auto-modified |
+| TA7.8 | `test_find_target_section_keywords` | Section detection by keywords |
+
+### TA8 — File Discovery (3 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TA8.1 | `test_finds_at_git_root` | Git root CLAUDE.md found first |
+| TA8.2 | `test_finds_in_dot_claude` | `.claude/CLAUDE.md` fallback works |
+| TA8.3 | `test_not_found` | Returns None when no file exists |
+
+### TA9 — Report Rendering & CLI Integration (9 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TA9.1 | `test_all_sections` | Report contains all 4 sections |
+| TA9.2 | `test_no_gaps` | Clean report when no issues |
+| TA9.3 | `test_coverage_percentage` | Coverage % rendered correctly |
+| TA9.4 | `test_fix_result_in_report` | Fix results shown in summary |
+| TA9.5 | `test_cli_audit_report_only` | Report-only mode works |
+| TA9.6 | `test_cli_audit_fix_mode` | Fix mode modifies file |
+| TA9.7 | `test_cli_audit_dry_run` | Dry run doesn't modify file |
+| TA9.8 | `test_cli_audit_below_threshold_exit_2` | Exit code 2 on threshold fail |
+| TA9.9 | `test_cli_audit_global_only` | Global-only mode works |
+
+### TA10 — Edge Cases (4 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TA10.1 | `test_audit_empty_claude_md` | Empty file flags all entries |
+| TA10.2 | `test_audit_no_momento_entries` | No entries = 100% coverage |
+| TA10.3 | `test_audit_no_claude_md_found` | No file = empty stale refs |
+| TA10.4 | `test_audit_all_entries_covered` | Full coverage detected correctly |

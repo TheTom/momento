@@ -511,6 +511,94 @@ def cmd_check_stale(args, conn, project_id, project_name, branch):
         sys.exit(0)
 
 
+def cmd_audit_claude_md(args, conn, project_id, project_name, branch):
+    """Audit CLAUDE.md against durable Momento entries."""
+    from momento.audit import (
+        audit_claude_md,
+        check_maturity,
+        find_project_claude_md,
+        render_report,
+    )
+    from momento.surface import _resolve_git_root
+
+    if project_id is None:
+        print("Error: no project detected. Run from a git repository with Momento entries.", file=sys.stderr)
+        sys.exit(1)
+
+    # Maturity check (unless --force)
+    force = getattr(args, "force", False)
+    if not force:
+        passed, threshold_report = check_maturity(conn, project_id)
+        if not passed:
+            print(f"{project_name} — not enough data to audit yet.\n")
+            t = threshold_report
+            from momento.audit import MATURITY_THRESHOLDS as MT
+            def _check(val, req):
+                return "\u2713" if val >= req else f"(need {req})"
+            print(f"  Entries: {t.total_entries} {_check(t.total_entries, MT['total_entries'])}")
+            print(f"  Durable: {t.durable_entries} of {MT['durable_entries']} {_check(t.durable_entries, MT['durable_entries'])}")
+            print(f"  Types: {t.distinct_types} of {MT['distinct_types']} {_check(t.distinct_types, MT['distinct_types'])}")
+            print(f"  Days active: {t.days_active} {_check(t.days_active, MT['days_active'])}")
+            print(f"\nKeep using Momento. Audit works best after a few sessions.")
+            print(f"\n  (use --force to skip this check)")
+            sys.exit(2)
+
+    # File discovery
+    working_dir = os.path.abspath(args.dir)
+    git_root = _resolve_git_root(working_dir)
+    global_only = getattr(args, "global_only", False)
+    project_only = getattr(args, "project_only", False)
+
+    project_path = None
+    global_path = None
+
+    if not global_only:
+        project_path = find_project_claude_md(git_root, working_dir)
+        fix = getattr(args, "fix", False)
+        dry_run = getattr(args, "dry_run", False)
+        if not project_path and not fix:
+            print("No project CLAUDE.md found. Nothing to audit.")
+            # Still check global if not --project-only
+            if project_only:
+                sys.exit(1)
+
+    if not project_only:
+        global_path = os.path.expanduser("~/.claude/CLAUDE.md")
+        if not os.path.isfile(global_path):
+            global_path = None
+            if global_only:
+                print("No global CLAUDE.md found at ~/.claude/CLAUDE.md")
+                sys.exit(1)
+
+    fix = getattr(args, "fix", False)
+    dry_run = getattr(args, "dry_run", False)
+
+    # --fix and --dry-run: treat as dry-run
+    if fix and dry_run:
+        fix = False
+
+    # If fix mode and no project CLAUDE.md, create one
+    if fix and not project_path and git_root:
+        project_path = os.path.join(git_root, "CLAUDE.md")
+
+    result, fix_result = audit_claude_md(
+        conn=conn,
+        project_id=project_id,
+        project_name=project_name,
+        project_claude_md_path=project_path if not global_only else None,
+        global_claude_md_path=global_path if not project_only else None,
+        fix=fix,
+        dry_run=dry_run,
+        force=force,
+    )
+
+    if dry_run:
+        print("DRY RUN — no files modified. Showing what --fix would do:\n")
+
+    report = render_report(result, fix_result)
+    print(report)
+
+
 def cmd_debug_restore(args, conn, project_id, project_name, branch):
     """Show tier breakdown of restore output."""
     from momento.retrieve import retrieve_context
@@ -615,6 +703,17 @@ def main() -> None:
     check_stale_p.add_argument("--threshold", type=int, default=30,
                                 help="Stale threshold in minutes (default: 30)")
 
+    # audit-claude-md
+    audit_p = subparsers.add_parser("audit-claude-md", help="Audit CLAUDE.md against Momento knowledge")
+    audit_p.add_argument("--fix", action="store_true", help="Append missing entries to CLAUDE.md")
+    audit_p.add_argument("--dry-run", action="store_true", dest="dry_run",
+                          help="Preview --fix without writing")
+    audit_p.add_argument("--force", action="store_true", help="Skip maturity threshold check")
+    audit_p.add_argument("--global-only", action="store_true", dest="global_only",
+                          help="Only audit ~/.claude/CLAUDE.md")
+    audit_p.add_argument("--project-only", action="store_true", dest="project_only",
+                          help="Only audit project CLAUDE.md")
+
     # debug-restore
     debug_p = subparsers.add_parser("debug-restore", help="Show restore tier breakdown")
     debug_p.add_argument("--surface", help="Surface filter")
@@ -649,6 +748,7 @@ def main() -> None:
         "search": cmd_search,
         "snippet": cmd_snippet,
         "check-stale": cmd_check_stale,
+        "audit-claude-md": cmd_audit_claude_md,
         "debug-restore": cmd_debug_restore,
     }
 
