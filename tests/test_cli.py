@@ -767,7 +767,7 @@ class TestCmdInspectDirect:
                 created_at=days_ago(1),
             ),
             make_entry(
-                content="B" * 80,  # >60 chars to trigger truncation
+                content="B" * 80,
                 type="gotcha",
                 tags=["server", "stripe"],
                 branch=None,
@@ -782,7 +782,7 @@ class TestCmdInspectDirect:
         assert "[gotcha]" in out
         assert "branch=" in out
         assert "(none)" in out  # None branch
-        assert "..." in out  # truncated content
+        assert "B" * 80 in out  # full content, no truncation
 
 
 class TestCmdPruneDirect:

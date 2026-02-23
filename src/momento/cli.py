@@ -260,10 +260,9 @@ def cmd_inspect(args, conn, project_id, project_name, branch):
         entry_type, entry_branch, tags_json, created_at, content = row
         tags = json.loads(tags_json)
         age = _format_age(created_at)
-        preview = content[:60] + "..." if len(content) > 60 else content
         branch_str = entry_branch or "(none)"
         print(f"[{entry_type}] branch={branch_str} tags={tags} {age}")
-        print(f"  {preview}")
+        print(f"  {content}")
         print()
 
 
@@ -443,8 +442,7 @@ def cmd_search(args, conn, project_id, project_name, branch):
         return
 
     for entry in result.entries:
-        preview = entry.content[:80] + "..." if len(entry.content) > 80 else entry.content
-        print(f"[{entry.type}] {preview}")
+        print(f"[{entry.type}] {entry.content}")
     print(f"\n{len(result.entries)} results, ~{result.total_tokens} tokens")
 
 
@@ -535,8 +533,7 @@ def cmd_debug_restore(args, conn, project_id, project_name, branch):
     for tier_type, entries in tiers.items():
         print(f"\n--- {tier_type} ({len(entries)} entries) ---")
         for e in entries:
-            preview = e.content[:60] + "..." if len(e.content) > 60 else e.content
-            print(f"  [{e.branch or 'none'}] {preview}")
+            print(f"  [{e.branch or 'none'}] {e.content}")
 
     print(f"\nTotal: {len(result.entries)} entries, ~{result.total_tokens} tokens")
     if result.rendered:
