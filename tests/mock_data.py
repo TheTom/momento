@@ -753,3 +753,490 @@ def make_decay_entries() -> list[dict]:
             created_at=hours_ago(240),  # 10 days
         ),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Snippet factories (v0.2)
+# ---------------------------------------------------------------------------
+
+def make_snippet_day() -> list[dict]:
+    """A realistic day of work. Returns 14 entries for snippet testing.
+
+    Breakdown:
+    - 5 session_state (3 accomplished by recency, 1 in-progress,
+      1 accomplished by "done" keyword override)
+    - 2 decision
+    - 2 gotcha
+    - 2 pattern
+    - 2 plan
+    - 1 cross-project decision (different project_id)
+
+    Total: 14. All timestamps within today (hours_ago).
+    """
+    entries = []
+
+    # session_state 1: server/feature/billing, 6h ago (accomplished - older)
+    entries.append(make_entry(
+        content=SESSION_STATES[0],
+        type="session_state",
+        tags=["server", "auth", "migration"],
+        branch="feature/billing-rewrite",
+        surface="server",
+        created_at=hours_ago(6),
+    ))
+
+    # session_state 2: server/feature/billing, 4h ago (accomplished - older)
+    entries.append(make_entry(
+        content=SESSION_STATES[1],
+        type="session_state",
+        tags=["server", "webhook", "stripe"],
+        branch="feature/billing-rewrite",
+        surface="server",
+        created_at=hours_ago(4),
+    ))
+
+    # session_state 3: server/feature/billing, 1h ago (in-progress - most recent for key)
+    entries.append(make_entry(
+        content=SESSION_STATES[4],
+        type="session_state",
+        tags=["server", "billing", "stripe"],
+        branch="feature/billing-rewrite",
+        surface="server",
+        created_at=hours_ago(1),
+    ))
+
+    # session_state 4: ios/main, 3h ago (in-progress - only one for this key)
+    entries.append(make_entry(
+        content=SESSION_STATES[2],
+        type="session_state",
+        tags=["ios", "keychain", "migration"],
+        branch="main",
+        surface="ios",
+        created_at=hours_ago(3),
+    ))
+
+    # session_state 5: "done" keyword - accomplished despite being newest for its key
+    entries.append(make_entry(
+        content="Auth migration done. All handlers updated.",
+        type="session_state",
+        tags=["server", "auth"],
+        branch="main",
+        surface="server",
+        created_at=hours_ago(1),
+    ))
+
+    # decision 1
+    entries.append(make_entry(
+        content=DECISIONS[0],
+        type="decision",
+        tags=["billing", "stripe", "server"],
+        branch="feature/billing-rewrite",
+        created_at=hours_ago(5),
+    ))
+
+    # decision 2
+    entries.append(make_entry(
+        content=DECISIONS[1],
+        type="decision",
+        tags=["auth", "jwt", "server"],
+        branch="main",
+        created_at=hours_ago(3),
+    ))
+
+    # gotcha 1
+    entries.append(make_entry(
+        content=GOTCHAS[0],
+        type="gotcha",
+        tags=["server", "webhook", "stripe"],
+        branch="feature/billing-rewrite",
+        created_at=hours_ago(4),
+    ))
+
+    # gotcha 2
+    entries.append(make_entry(
+        content=GOTCHAS[1],
+        type="gotcha",
+        tags=["ios", "keychain", "security"],
+        branch="main",
+        created_at=hours_ago(2),
+    ))
+
+    # pattern 1
+    entries.append(make_entry(
+        content=PATTERNS[0],
+        type="pattern",
+        tags=["api", "server", "architecture"],
+        branch=None,
+        created_at=hours_ago(7),
+    ))
+
+    # pattern 2
+    entries.append(make_entry(
+        content=PATTERNS[1],
+        type="pattern",
+        tags=["api", "error-handling", "server"],
+        branch=None,
+        created_at=hours_ago(6),
+    ))
+
+    # plan 1
+    entries.append(make_entry(
+        content=PLANS[0],
+        type="plan",
+        tags=["billing", "stripe", "migration"],
+        branch="feature/billing-rewrite",
+        created_at=hours_ago(8),
+    ))
+
+    # plan 2
+    entries.append(make_entry(
+        content=PLANS[1],
+        type="plan",
+        tags=["auth", "migration", "jwt"],
+        branch="main",
+        created_at=hours_ago(6),
+    ))
+
+    # cross-project decision (from identity-service)
+    entries.append(make_entry(
+        content=CROSS_PROJECT_DECISIONS[0],
+        type="decision",
+        tags=["auth", "oauth", "security"],
+        branch="main",
+        project_id=SECOND_PROJECT_ID,
+        project_name=SECOND_PROJECT_NAME,
+        created_at=hours_ago(2),
+    ))
+
+    return entries
+
+
+def make_snippet_week() -> list[dict]:
+    """A realistic week of work. Returns 30 entries across 5 days.
+
+    Days with entries: 1d, 2d, 3d, 5d, 6d ago.
+    Day 4 is a gap (no entries). Multiple branches and surfaces.
+    """
+    entries = []
+
+    # Day 1 (1 day ago) — 7 entries
+    entries.append(make_entry(
+        content=SESSION_STATES[0],
+        type="session_state", tags=["server", "auth"],
+        branch="feature/billing-rewrite", surface="server",
+        created_at=days_ago(1),
+    ))
+    entries.append(make_entry(
+        content=SESSION_STATES[4],
+        type="session_state", tags=["server", "billing"],
+        branch="feature/billing-rewrite", surface="server",
+        created_at=hours_ago(20),
+    ))
+    entries.append(make_entry(
+        content=DECISIONS[3],
+        type="decision", tags=["api", "rate-limiting"],
+        branch="main",
+        created_at=days_ago(1),
+    ))
+    entries.append(make_entry(
+        content=GOTCHAS[0],
+        type="gotcha", tags=["server", "webhook", "stripe"],
+        branch="feature/billing-rewrite",
+        created_at=days_ago(1),
+    ))
+    entries.append(make_entry(
+        content=PATTERNS[0],
+        type="pattern", tags=["api", "server", "architecture"],
+        branch=None,
+        created_at=days_ago(1),
+    ))
+    entries.append(make_entry(
+        content=PATTERNS[1],
+        type="pattern", tags=["api", "error-handling"],
+        branch=None,
+        created_at=days_ago(1),
+    ))
+    entries.append(make_entry(
+        content=PLANS[0],
+        type="plan", tags=["billing", "stripe"],
+        branch="feature/billing-rewrite",
+        created_at=days_ago(1),
+    ))
+
+    # Day 2 (2 days ago) — 6 entries
+    entries.append(make_entry(
+        content=SESSION_STATES[1],
+        type="session_state", tags=["server", "webhook"],
+        branch="feature/billing-rewrite", surface="server",
+        created_at=days_ago(2),
+    ))
+    entries.append(make_entry(
+        content=SESSION_STATES[2],
+        type="session_state", tags=["ios", "keychain"],
+        branch="main", surface="ios",
+        created_at=days_ago(2),
+    ))
+    entries.append(make_entry(
+        content=DECISIONS[1],
+        type="decision", tags=["auth", "jwt", "server"],
+        branch="main",
+        created_at=days_ago(2),
+    ))
+    entries.append(make_entry(
+        content=GOTCHAS[1],
+        type="gotcha", tags=["ios", "keychain"],
+        branch="main",
+        created_at=days_ago(2),
+    ))
+    entries.append(make_entry(
+        content=PLANS[1],
+        type="plan", tags=["auth", "migration"],
+        branch="main",
+        created_at=days_ago(2),
+    ))
+    entries.append(make_entry(
+        content="Auth migration done. All 7 handlers updated.",
+        type="session_state", tags=["server", "auth"],
+        branch="main", surface="server",
+        created_at=days_ago(2),
+    ))
+
+    # Day 3 (3 days ago) — 6 entries
+    entries.append(make_entry(
+        content=SESSION_STATES[3],
+        type="session_state", tags=["web", "dashboard"],
+        branch="main", surface="web",
+        created_at=days_ago(3),
+    ))
+    entries.append(make_entry(
+        content=DECISIONS[0],
+        type="decision", tags=["billing", "stripe"],
+        branch="feature/billing-rewrite",
+        created_at=days_ago(3),
+    ))
+    entries.append(make_entry(
+        content=DECISIONS[2],
+        type="decision", tags=["database", "postgresql"],
+        branch="feature/billing-rewrite",
+        created_at=days_ago(3),
+    ))
+    entries.append(make_entry(
+        content=GOTCHAS[2],
+        type="gotcha", tags=["ios", "networking"],
+        branch="main",
+        created_at=days_ago(3),
+    ))
+    entries.append(make_entry(
+        content="Stripe test key rotation completed for sandbox.",
+        type="session_state", tags=["server", "stripe"],
+        branch="feature/billing-rewrite", surface="server",
+        created_at=days_ago(3),
+    ))
+    entries.append(make_entry(
+        content="PKCE flow implementation started for mobile clients.",
+        type="session_state", tags=["server", "auth"],
+        branch="feature/auth-migration", surface="server",
+        created_at=days_ago(3),
+    ))
+
+    # Day 4 (4 days ago) — gap day, no entries
+
+    # Day 5 (5 days ago) — 5 entries
+    entries.append(make_entry(
+        content="Initial billing schema migration started.",
+        type="session_state", tags=["server", "billing"],
+        branch="feature/billing-rewrite", surface="server",
+        created_at=days_ago(5),
+    ))
+    entries.append(make_entry(
+        content="Initial Keychain wrapper drafted for iOS.",
+        type="session_state", tags=["ios", "keychain"],
+        branch="main", surface="ios",
+        created_at=days_ago(5),
+    ))
+    entries.append(make_entry(
+        content=CROSS_PROJECT_DECISIONS[0],
+        type="decision", tags=["auth", "oauth"],
+        branch="main",
+        project_id=SECOND_PROJECT_ID, project_name=SECOND_PROJECT_NAME,
+        created_at=days_ago(5),
+    ))
+    entries.append(make_entry(
+        content="Redis session store chosen over Memcached.",
+        type="decision", tags=["server", "redis", "sessions"],
+        branch="main",
+        created_at=days_ago(5),
+    ))
+    entries.append(make_entry(
+        content="Background fetch breaks with WhenUnlocked keychain accessibility.",
+        type="gotcha", tags=["ios", "keychain"],
+        branch="main",
+        created_at=days_ago(5),
+    ))
+
+    # Day 6 (6 days ago) — 6 entries
+    entries.append(make_entry(
+        content="Project scaffolding complete. CI pipeline green.",
+        type="session_state", tags=["server", "ci"],
+        branch="main", surface="server",
+        created_at=days_ago(6),
+    ))
+    entries.append(make_entry(
+        content="Monorepo structure decided: /server, /web, /ios, /android.",
+        type="decision", tags=["architecture", "monorepo"],
+        branch="main",
+        created_at=days_ago(6),
+    ))
+    entries.append(make_entry(
+        content="Git LFS required for iOS assets >10MB.",
+        type="gotcha", tags=["ios", "git"],
+        branch="main",
+        created_at=days_ago(6),
+    ))
+    entries.append(make_entry(
+        content="Deployment pipeline uses blue-green with 5min bake time.",
+        type="session_state", tags=["server", "deploy"],
+        branch="main", surface="server",
+        created_at=days_ago(6),
+    ))
+    entries.append(make_entry(
+        content="Feature flags via LaunchDarkly for progressive rollouts.",
+        type="decision", tags=["server", "feature-flags"],
+        branch="main",
+        created_at=days_ago(6),
+    ))
+    entries.append(make_entry(
+        content="Web dashboard prototype started with React + Vite.",
+        type="session_state", tags=["web", "react"],
+        branch="main", surface="web",
+        created_at=days_ago(6),
+    ))
+
+    return entries
+
+
+def make_snippet_empty() -> list[dict]:
+    """Returns entries outside today's range.
+
+    All entries are from yesterday or earlier. When queried for today,
+    the snippet should produce an empty result.
+    """
+    return [
+        make_entry(
+            content="Yesterday's checkpoint: finished rate limiter config.",
+            type="session_state",
+            tags=["server", "rate-limiting"],
+            branch="main",
+            surface="server",
+            created_at=hours_ago(25),
+        ),
+        make_entry(
+            content="Old decision from last week.",
+            type="decision",
+            tags=["architecture"],
+            branch="main",
+            created_at=days_ago(7),
+        ),
+        make_entry(
+            content="Ancient gotcha from two weeks ago.",
+            type="gotcha",
+            tags=["server", "postgresql"],
+            branch="main",
+            created_at=days_ago(14),
+        ),
+    ]
+
+
+def make_snippet_session_split() -> list[dict]:
+    """Session states designed to test accomplished/in-progress split.
+
+    - 2 session_state for (server, feature/billing): older = accomplished, newer = in-progress
+    - 2 session_state for (ios, main): older = accomplished, newer = in-progress
+    - 1 session_state with "completed" keyword: always accomplished despite being newest
+    """
+    entries = []
+
+    # (server, feature/billing) pair
+    entries.append(make_entry(
+        content="Billing webhook handler refactored. Tests pending.",
+        type="session_state",
+        tags=["server", "billing", "webhook"],
+        branch="feature/billing-rewrite",
+        surface="server",
+        created_at=hours_ago(5),
+    ))
+    entries.append(make_entry(
+        content="Billing integration tests now passing. Moving to load test.",
+        type="session_state",
+        tags=["server", "billing", "testing"],
+        branch="feature/billing-rewrite",
+        surface="server",
+        created_at=hours_ago(2),
+    ))
+
+    # (ios, main) pair
+    entries.append(make_entry(
+        content="Keychain wrapper: basic CRUD operations working.",
+        type="session_state",
+        tags=["ios", "keychain"],
+        branch="main",
+        surface="ios",
+        created_at=hours_ago(6),
+    ))
+    entries.append(make_entry(
+        content="Keychain wrapper: added migration from legacy storage.",
+        type="session_state",
+        tags=["ios", "keychain", "migration"],
+        branch="main",
+        surface="ios",
+        created_at=hours_ago(3),
+    ))
+
+    # Keyword override: "completed" makes this accomplished despite being newest
+    entries.append(make_entry(
+        content="Auth token rotation completed. All edge cases handled.",
+        type="session_state",
+        tags=["server", "auth"],
+        branch="feature/auth-migration",
+        surface="server",
+        created_at=hours_ago(1),
+    ))
+
+    return entries
+
+
+def make_snippet_durable_only() -> list[dict]:
+    """Only decisions + gotchas + patterns. No session_state. No plans.
+
+    Used to test rendering when only durable entry types exist.
+    """
+    return [
+        make_entry(
+            content=DECISIONS[0],
+            type="decision",
+            tags=["billing", "stripe"],
+            branch="feature/billing-rewrite",
+            created_at=hours_ago(3),
+        ),
+        make_entry(
+            content=DECISIONS[1],
+            type="decision",
+            tags=["auth", "jwt"],
+            branch="main",
+            created_at=hours_ago(5),
+        ),
+        make_entry(
+            content=GOTCHAS[0],
+            type="gotcha",
+            tags=["server", "webhook"],
+            branch="feature/billing-rewrite",
+            created_at=hours_ago(4),
+        ),
+        make_entry(
+            content=PATTERNS[0],
+            type="pattern",
+            tags=["api", "architecture"],
+            branch=None,
+            created_at=hours_ago(6),
+        ),
+    ]
