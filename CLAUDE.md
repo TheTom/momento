@@ -62,7 +62,7 @@ tests/
   mock_data.py     # Factory functions: make_entry(), make_snippet_day/week/empty/etc.
   test_restore.py  # Core 5-tier restore contract (largest test file)
   test_snippet_*.py # 10 files covering snippets (query, grouping, rendering, CLI, MCP, edge)
-  ...              # 30 test files total, 432 tests, 98% coverage
+  ...              # 30 test files total, 437 tests, 98% coverage
 ```
 
 ## Architecture
@@ -133,6 +133,11 @@ Use `@patch` decorators for `identity`, `surface`, `db`. Pass real test db via `
 ```
 
 Shell scripts: place after the shebang line.
+
+### Docs
+
+- Code changes must be reflected in docs. When adding/modifying CLI commands, MCP tools, or features, update: `docs/reference.md`, `docs/momento-tests.md`, `README.md`, and `docs/README.md` as needed.
+- Update test counts in badges and status sections when tests are added.
 
 ### Code Style
 
