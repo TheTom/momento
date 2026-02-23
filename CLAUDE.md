@@ -4,6 +4,20 @@ Deterministic state recovery for AI coding agents. Local SQLite memory layer tha
 
 **Status:** v0.1.0 shipped, dogfood phase. Snippets (v0.2) implemented.
 
+## Agent Output Rules
+
+When running `momento` CLI commands (status, snippet, last, inspect, etc.),
+**always include the full output as a code block in your text response**.
+Do NOT rely on Bash tool output alone — Claude Code truncates it and users
+must press ctrl+o to expand. Copy the result and present it inline:
+
+```
+momento status → paste full output in a code block
+momento snippet → paste full output in a code block
+```
+
+This applies to all momento CLI output the user would want to read.
+
 ## Quick Start
 
 ```bash

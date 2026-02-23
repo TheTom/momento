@@ -155,7 +155,11 @@ class TestSetupShFlags:
         claude_md = claude_dir / "CLAUDE.md"
         claude_md.write_text(
             "# My Config\n\nSome existing content.\n"
-            "\n## Momento Context Recovery\n\n"
+            "\n## Momento Output Rules\n\n"
+            "When running `momento` CLI commands (status, snippet, last, inspect, etc.),\n"
+            "always include the full output as a code block in your text response.\n"
+            "Bash tool output gets truncated in the Claude Code UI. Copy the result inline.\n\n"
+            "## Momento Context Recovery\n\n"
             "After any significant file change, decision, or completed subtask:\n"
             '  Call log_knowledge(type="session_state", tags=[<relevant domains>])\n'
             "  with what was done, what was decided, and what's next.\n"
@@ -192,7 +196,7 @@ class TestSetupShFlags:
 
         # Verify CLAUDE.md no longer has the Momento adapter
         updated_claude = claude_md.read_text()
-        assert "Momento Context Recovery" not in updated_claude
+        assert "Momento Output Rules" not in updated_claude
         assert "My Config" in updated_claude
 
         # Verify .codex_instructions.md was removed

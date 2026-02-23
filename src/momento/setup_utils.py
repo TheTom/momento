@@ -121,9 +121,15 @@ def unregister_mcp_server(settings_path: str) -> bool:
 # Claude Adapter (CLAUDE.md)
 # ---------------------------------------------------------------------------
 
-CLAUDE_ADAPTER_HEADER = "## Momento Context Recovery"
+CLAUDE_ADAPTER_HEADER = "## Momento Output Rules"
 
 CLAUDE_ADAPTER_BLOCK = """
+## Momento Output Rules
+
+When running `momento` CLI commands (status, snippet, last, inspect, etc.),
+always include the full output as a code block in your text response.
+Bash tool output gets truncated in the Claude Code UI. Copy the result inline.
+
 ## Momento Context Recovery
 
 After any significant file change, decision, or completed subtask:
@@ -189,8 +195,9 @@ def add_claude_adapter(claude_md_path: str) -> bool:
 def remove_claude_adapter(claude_md_path: str) -> bool:
     """Remove the Momento adapter section from CLAUDE.md.
 
-    Strips from '## Momento Context Recovery' through the end marker line.
-    Preserves surrounding content. Noop if not present or file missing.
+    Strips from '## Momento Output Rules' (or legacy '## Momento Context
+    Recovery') through the end marker line.  Preserves surrounding content.
+    Noop if not present or file missing.
 
     Returns True on success (including noop), False on error.
     """
@@ -201,13 +208,15 @@ def remove_claude_adapter(claude_md_path: str) -> bool:
         with open(claude_md_path) as f:
             content = f.read()
 
-        if CLAUDE_ADAPTER_HEADER not in content:
+        # Handle both current and legacy adapter headers
+        _LEGACY_HEADER = "## Momento Context Recovery"
+        if CLAUDE_ADAPTER_HEADER not in content and _LEGACY_HEADER not in content:
             return True
 
-        # Match from the adapter header through the end marker line,
+        # Match from whichever header appears first through the end marker
         # including any leading blank lines before the header
         pattern = (
-            r"\n*## Momento Context Recovery\n"
+            r"\n*## Momento (?:Output Rules|Context Recovery)\n"
             r".*?"
             + re.escape(_ADAPTER_END_MARKER)
             + r"\n?"
@@ -350,6 +359,12 @@ def unregister_hooks(settings_path: str) -> bool:
 # ---------------------------------------------------------------------------
 
 CODEX_ADAPTER_CONTENT = """\
+## Momento Output Rules
+
+When running `momento` CLI commands (status, snippet, last, inspect, etc.),
+always include the full output as a code block in your text response.
+Tool output gets truncated in some UIs. Copy the result inline.
+
 ## Momento Checkpointing and Context Recovery
 
 You are paired with a local memory layer called Momento that stores
