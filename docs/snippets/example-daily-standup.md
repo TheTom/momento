@@ -4,7 +4,8 @@
 - Added pre-push hook (tests + 95% coverage gate), fixed _is_momento_hook case bug, added 22 tests for check-stale and hook registration. Updated CLAUDE.md dev guide, .gitignore. 6 commits, 432 tests, 98% coverage, clean tree.
 - Completed UX fix: Added "Momento Output Rules" section to CLAUDE_ADAPTER_BLOCK and CODEX_ADAPTER_CONTENT in setup_utils.py. Updated remove_claude_adapter() to handle both new and legacy headers. Updated test_setup_sh.py to match new adapter format. All 432 tests pass, 98.38% coverage. Committed as 2ec870b.
 - Completed snippet staleness warning feature. _check_staleness() warns when last checkpoint >10min old. Text formats prepend note, JSON includes staleness_warning field. 5 new tests added (437 total, 98% coverage). Updated docs: reference.md (added snippet CLI, check-stale CLI, generate_snippet MCP tool), momento-tests.md (TS9.8 spec, counts), README badges. Committed as 9dd0a47. All pushed to main.
-*Today:* —
+*Today:*
+- Fixed standup snippet format: changed render_standup() from space-joining items into one blob to bullet-point list per section. Regenerated all 4 snippet examples in docs/snippets/. Also added docs sync convention to CLAUDE.md. 437 tests, 98% coverage. Committed fd1c403, pushed to main. Next: the Discovered/Blockers sections are noisy from ingested error logs — may want to filter or limit those in a future pass.
 *Blockers:*
 - Error: Exit code 1.
 - Error: Exit code 1.

@@ -3,7 +3,7 @@
   "branch": null,
   "range": {
     "start": "2026-02-23T00:00:00Z",
-    "end": "2026-02-23T16:40:36Z"
+    "end": "2026-02-23T16:41:11Z"
   },
   "sections": {
     "accomplished": [
@@ -101,9 +101,15 @@
         "entry_id": "6d01ae50-5649-4fe8-9424-ff1f55360fd8"
       }
     ],
-    "in_progress": [],
+    "in_progress": [
+      {
+        "content": "Fixed standup snippet format: changed render_standup() from space-joining items into one blob to bullet-point list per section. Regenerated all 4 snippet examples in docs/snippets/. Also added docs sync convention to CLAUDE.md. 437 tests, 98% coverage. Committed fd1c403, pushed to main. Next: the Discovered/Blockers sections are noisy from ingested error logs \u2014 may want to filter or limit those in a future pass.",
+        "entry_id": "b966de67-0356-44eb-98aa-7745180711ff",
+        "source_type": "manual"
+      }
+    ],
     "patterns": []
   },
-  "entry_count": 21,
+  "entry_count": 22,
   "empty": false
 }

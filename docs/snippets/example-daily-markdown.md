@@ -270,3 +270,6 @@ Resolution: The .venv is gone — likely had broken symlinks from a Python upgra
 Resolution: Found the bug. The integration test `test_uninstall_yes_cleans_integration_files` runs `setup.sh --uninstall --yes` which CDs to the real project root and nukes the real `.venv` because our `setup_ven
 - Error: <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
 Resolution: Now clean the stale entry from `settings.json` and run tests:
+
+### Still In Progress
+- Fixed standup snippet format: changed render_standup() from space-joining items into one blob to bullet-point list per section. Regenerated all 4 snippet examples in docs/snippets/. Also added docs sync convention to CLAUDE.md. 437 tests, 98% coverage. Committed fd1c403, pushed to main. Next: the Discovered/Blockers sections are noisy from ingested error logs — may want to filter or limit those in a future pass.
