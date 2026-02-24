@@ -17,16 +17,28 @@ Every feature from v0.2 onward is a **read-path view** over existing data — or
 
 ---
 
-## v0.2 — Decay + Developer Views
+## v0.1.x — Shipped (Pulled Forward)
 
-**Trigger:** v0.1 stable, daily use generating entries, knowledge base growing
-**Theme:** "Memory that stays relevant without manual pruning"
+Features originally planned for v0.2 that shipped early during v0.1.x dogfood.
+
+| Feature | Version | Type | Description |
+|---------|---------|------|-------------|
+| **Snippets** | v0.1.1 | CLI + MCP | Daily/weekly/custom work summaries. Standup, markdown, slack, JSON formats. |
+| **Checkpoint Hooks** | v0.1.1 | Setup | Stop hook blocks session end if no checkpoint in 30+ min. SessionStart hooks remind on resume. |
+| **Pre-push Gate** | v0.1.1 | Setup | License headers, passing tests, 95% coverage enforced on push. |
+| **FTS5 Search Fix** | v0.1.2 | Core | Multi-word queries use OR (was AND). MCP error messages improved. |
+| **CLAUDE.md Audit** | v0.1.3 | CLI | Compare Momento knowledge against CLAUDE.md, report gaps, optionally patch. [PRD](prd-momento-audit.md) |
+| **Knowledge Decay** | v0.1.3 | Core | Freshness-based ranking demotion within tiers. `MAX(created_at, last_retrieved_at)`. Schema v1→v2. [PRD](prd-momento-decay.md) |
+
+---
+
+## v0.2 — Developer Views
+
+**Trigger:** v0.1 stable, core features shipped, daily use generating entries
+**Theme:** "Ask questions of your own memory"
 
 | Feature | Type | New Schema? | Description |
 |---------|------|-------------|-------------|
-| ~~**Snippets**~~ | CLI + MCP | No | ~~Daily/weekly/custom work summaries. Standup, markdown, slack, JSON formats.~~ **SHIPPED v0.1.1** |
-| ~~**CLAUDE.md Audit**~~ | CLI | No | ~~Compare Momento knowledge against CLAUDE.md, identify gaps, optionally patch.~~ **SHIPPED v0.1.3** |
-| ~~**Knowledge Decay**~~ | Core | Minor (`knowledge_stats`) | ~~Freshness-based ranking demotion within tiers. `MAX(created_at, last_retrieved_at)`.~~ **IMPLEMENTED** [PRD](prd-momento-decay.md) |
 | **Decision Log** | CLI | No | Chronological decision history with rejected alternatives. Branch-filterable. `momento decisions` |
 | **Gotcha Map** | CLI | No | Surface-scoped pitfall reference. All gotchas grouped by surface. `momento gotchas` |
 | **Handoff** | CLI | No | Cross-agent briefing document. Narrative format for pasting into new sessions. `momento handoff` |
@@ -35,16 +47,13 @@ Every feature from v0.2 onward is a **read-path view** over existing data — or
 | Custom surface mappings | Config | No | `.momento/config.toml` for project-specific surface keywords beyond the default 4. |
 | `momento port` | CLI | No | Export CLAUDE.md-compatible instruction block for the current project. |
 
-**Ship criteria:** Decay working in dogfood. Developer views are read-only over existing schema (minor additive schema changes allowed).
+**Ship criteria:** Developer views are read-only over existing schema. All features pass the four-fence test.
 
 **Implementation order:**
-1. ~~Snippets (CLI + MCP)~~ — **DONE**
-2. ~~CLAUDE.md Audit~~ — **DONE**
-3. ~~Knowledge Decay~~ — **DONE**
-4. Decision Log + Gotcha Map — trivial once Snippets query infrastructure exists
-5. Momentum — shares same time-range query patterns
-6. Handoff + Export — different templates over same data
-7. Custom surface mappings + `momento port`
+1. Decision Log + Gotcha Map — trivial once Snippets query infrastructure exists
+2. Momentum — shares same time-range query patterns
+3. Handoff + Export — different templates over same data
+4. Custom surface mappings + `momento port`
 
 ---
 
