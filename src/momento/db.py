@@ -6,7 +6,7 @@
 import os
 import sqlite3
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -31,7 +31,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
         -- Stats table
         CREATE TABLE IF NOT EXISTS knowledge_stats (
             entry_id TEXT PRIMARY KEY REFERENCES knowledge(id) ON DELETE CASCADE,
-            retrieval_count INTEGER NOT NULL DEFAULT 0
+            retrieval_count INTEGER NOT NULL DEFAULT 0,
+            last_retrieved_at TEXT
         );
 
         -- Schema versioning
@@ -39,7 +40,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
-        INSERT OR IGNORE INTO momento_meta (key, value) VALUES ('schema_version', '1');
+        INSERT OR IGNORE INTO momento_meta (key, value) VALUES ('schema_version', '2');
 
         -- FTS5 (content-synced)
         CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
@@ -87,11 +88,29 @@ def get_schema_version(conn: sqlite3.Connection) -> int:
         return 0
 
 
+def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
+    """Add last_retrieved_at column to knowledge_stats for decay tracking."""
+    # Guard against concurrent migrations (ALTER TABLE is not idempotent)
+    cols = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(knowledge_stats)").fetchall()
+    }
+    if "last_retrieved_at" not in cols:
+        conn.execute(
+            "ALTER TABLE knowledge_stats ADD COLUMN last_retrieved_at TEXT"
+        )
+    conn.execute(
+        "UPDATE momento_meta SET value = '2' WHERE key = 'schema_version'"
+    )
+
+
 def run_migrations(conn: sqlite3.Connection, current_version: int) -> None:
     """Run forward-only migrations from current_version to latest."""
     if current_version < 1:
         # v0 -> v1: full schema creation handles everything
         create_schema(conn)
+    if current_version < 2:
+        _migrate_v1_to_v2(conn)
 
 
 def ensure_db(path: str) -> sqlite3.Connection:
