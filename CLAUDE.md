@@ -2,7 +2,7 @@
 
 Deterministic state recovery for AI coding agents. Local SQLite memory layer that restores working context in <2 seconds.
 
-**Status:** v0.1.3 shipped, dogfood phase. Audit + Snippets implemented.
+**Status:** v0.2.0 in progress. Knowledge decay (freshness-based ranking) implemented. Audit + Snippets shipped.
 
 ## Agent Output Rules
 

@@ -4,14 +4,14 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests: 514 passing](https://img.shields.io/badge/tests-514_passing-brightgreen.svg)](tests/)
+[![Tests: 514 passing](https://img.shields.io/badge/tests-538_passing-brightgreen.svg)](tests/)
 [![Coverage: 97%](https://img.shields.io/badge/coverage-97%25-brightgreen.svg)](tests/)
 
 ---
 
 ## Status
 
-**v0.1.3 shipped. In dogfood.** CLAUDE.md audit landed — `momento audit-claude-md` compares durable Momento entries against CLAUDE.md, reports gaps both directions, checks global adapter health, optionally patches the file. Snippets for work summaries. Checkpoint enforcement hooks. Pre-push hook gates all pushes on license headers, passing tests, and 95% coverage. 514 tests, 97% coverage.
+**v0.1.3 shipped. In dogfood.** CLAUDE.md audit landed — `momento audit-claude-md` compares durable Momento entries against CLAUDE.md, reports gaps both directions, checks global adapter health, optionally patches the file. Snippets for work summaries. Checkpoint enforcement hooks. Pre-push hook gates all pushes on license headers, passing tests, and 95% coverage. 538 tests, 97% coverage.
 
 **v0.1.2 fixes:**
 - **FTS5 search**: Multi-word queries now use OR semantics instead of implicit AND — entries matching *any* search term are returned, then ranked by relevance overlap. Previously, searching "rsync deploy gotchas" required ALL words present in a single entry.
@@ -273,7 +273,7 @@ Default locations:
 
 ### Tests & Coverage
 
-**514 tests passing. 97% coverage. Pre-push hook enforces 95% minimum.**
+**538 tests passing. 97% coverage. Pre-push hook enforces 95% minimum.**
 
 ```bash
 pytest tests/ -v                    # Full suite
@@ -361,10 +361,10 @@ tests/
 | **v0.1.1** | Snippets, checkpoint hooks, pre-push gate, output rules **(shipped)** |
 | **v0.1.2** | FTS5 search fix, MCP error messages, adapter upgrade **(shipped)** |
 | **v0.1.3** | CLAUDE.md audit **(shipped)** |
-| v0.2 | Session tracking, CLAUDE.md export, watchdog |
-| v0.3 | Vector embeddings (hybrid BM25 + semantic), multi-editor adapters |
-| v0.4 | CI promotion, retrieval analytics |
-| v0.5 | Thinking trace mining, auto-tracking, knowledge decay |
+| v0.2 | Knowledge decay, session tracking, CLAUDE.md export, watchdog |
+| v0.3 | Decay curve, pinning, vector embeddings (hybrid BM25 + semantic), multi-editor adapters |
+| v0.4 | CI promotion, retrieval analytics, auto-prune suggestions |
+| v0.5 | Thinking trace mining, auto-tracking, confidence recalibration |
 | v1.0 | Team sharing, cross-machine sync, Web UI |
 
 ---

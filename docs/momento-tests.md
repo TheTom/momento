@@ -1,12 +1,13 @@
 # Momento — Test Specification
 
-> **Status:** v0.1.3 shipped. 514 tests passing, 97% coverage. Pre-push hook enforces 95% minimum.
+> **Status:** v0.2.0 in progress. 538 tests passing, 97% coverage. Pre-push hook enforces 95% minimum.
 
-Four parts:
+Five parts:
 1. Pre-flight gaps found and fixed before v0.1
 2. v0.1 core tests (T1–T14, 84 specified)
 3. v0.2 snippets tests (TS1–TS10, 62 specified)
 4. v0.2 audit tests (TA1–TA10, 60 specified)
+5. v0.2 decay tests (TD.1–TD.10, 24 specified)
 
 ---
 
@@ -1705,3 +1706,85 @@ Tests for `momento audit-claude-md` — CLAUDE.md comparison against durable Mom
 | TA10.2 | `test_audit_no_momento_entries` | No entries = 100% coverage |
 | TA10.3 | `test_audit_no_claude_md_found` | No file = empty stale refs |
 | TA10.4 | `test_audit_all_entries_covered` | Full coverage detected correctly |
+
+---
+
+## Part 5: v0.2 Decay Tests (TD.1–TD.10)
+
+Knowledge decay: freshness-based ranking demotion within tiers.
+
+**File:** `tests/test_decay.py` — 24 tests
+
+### TD.1 — Freshness Replaces created_at in Sort (2 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TD.1.1 | `test_retrieved_entry_ranks_above_newer_unretrieved` | Entry created 30d ago + retrieved yesterday outranks entry created 2d ago with no retrievals |
+| TD.1.2 | `test_freshness_helper_returns_max` | `_freshness()` returns MAX(created_at, last_retrieved_at) |
+
+### TD.2 — NULL last_retrieved_at Defaults to created_at (2 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TD.2.1 | `test_null_last_retrieved_sorts_by_created_at` | Two entries with NULL last_retrieved_at sort by created_at DESC |
+| TD.2.2 | `test_stats_none_backward_compat` | stats=None in _sort_entries preserves v0.1 behavior |
+
+### TD.3 — Retrieval Updates last_retrieved_at (2 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TD.3.1 | `test_restore_sets_last_retrieved_at` | Restore mode sets last_retrieved_at on returned entries |
+| TD.3.2 | `test_restore_updates_multiple_entries` | All returned entries get last_retrieved_at set |
+
+### TD.4 — Search Does NOT Update last_retrieved_at (2 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TD.4.1 | `test_search_does_not_set_last_retrieved_at` | Search mode leaves last_retrieved_at NULL |
+| TD.4.2 | `test_search_still_increments_retrieval_count` | Search increments count but not timestamp |
+
+### TD.5 — Inspect Does NOT Update last_retrieved_at (2 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TD.5.1 | `test_inspect_list_does_not_update_stats` | Inspect list view doesn't touch knowledge_stats |
+| TD.5.2 | `test_inspect_detail_does_not_update_stats` | Inspect detail view doesn't touch knowledge_stats |
+
+### TD.6 — Freshness Does Not Cross Tiers (2 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TD.6.1 | `test_fresh_gotcha_does_not_outrank_stale_decision` | Tier ordering preserved despite freshness |
+| TD.6.2 | `test_fresh_plan_does_not_outrank_session_state` | Session state tier always comes first |
+
+### TD.7 — Surface/Branch Still Outrank Freshness (2 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TD.7.1 | `test_stale_surface_match_beats_fresh_non_surface` | Surface match overrides freshness |
+| TD.7.2 | `test_stale_branch_match_beats_fresh_non_branch` | Branch match overrides freshness |
+
+### TD.8 — Schema Migration v1→v2 (4 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TD.8.1 | `test_v1_schema_lacks_column` | v1 schema doesn't have last_retrieved_at |
+| TD.8.2 | `test_migration_adds_column` | Migration adds last_retrieved_at column |
+| TD.8.3 | `test_existing_rows_get_null` | Existing entries get NULL last_retrieved_at |
+| TD.8.4 | `test_ensure_db_auto_migrates` | ensure_db runs migration automatically |
+
+### TD.9 — Decay Visibility in Inspect (3 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TD.9.1 | `test_decaying_indicator_shown_for_old_freshness` | `⚠ decaying` shown when freshness > 21d |
+| TD.9.2 | `test_decaying_indicator_absent_for_fresh_entry` | No indicator for recently fresh entries |
+| TD.9.3 | `test_inspect_list_shows_freshness` | List view shows `fresh:` annotation |
+
+### TD.10 — Status Shows Freshness Distribution (3 tests)
+
+| ID | Test | Validates |
+|----|------|-----------|
+| TD.10.1 | `test_status_shows_freshness_section` | Freshness section appears with active/aging/decaying counts |
+| TD.10.2 | `test_status_correct_bucket_counts` | Entries bucketed correctly by freshness age |
+| TD.10.3 | `test_status_no_freshness_when_empty` | No Freshness section when no entries |

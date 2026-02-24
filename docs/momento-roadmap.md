@@ -1,7 +1,7 @@
 # Momento — Feature Roadmap
 
-**Based on:** v0.1.1 shipped (432 tests passing, 98% coverage)
-**Date:** February 23, 2026
+**Based on:** v0.1.3 shipped (514 tests passing, 97% coverage)
+**Date:** February 24, 2026
 
 ---
 
@@ -25,6 +25,8 @@ Every feature from v0.2 onward is a **read-path view** over existing data — or
 | Feature | Type | New Schema? | Description |
 |---------|------|-------------|-------------|
 | ~~**Snippets**~~ | CLI + MCP | No | ~~Daily/weekly/custom work summaries. Standup, markdown, slack, JSON formats.~~ **SHIPPED v0.1.1** |
+| ~~**CLAUDE.md Audit**~~ | CLI | No | ~~Compare Momento knowledge against CLAUDE.md, identify gaps, optionally patch.~~ **SHIPPED v0.1.3** |
+| **Knowledge Decay** | Core | Minor (`knowledge_stats`) | Freshness-based ranking demotion within tiers. `MAX(created_at, last_retrieved_at)`. [PRD](prd-momento-decay.md) |
 | **Decision Log** | CLI | No | Chronological decision history with rejected alternatives. Branch-filterable. `momento decisions` |
 | **Gotcha Map** | CLI | No | Surface-scoped pitfall reference. All gotchas grouped by surface. `momento gotchas` |
 | **Handoff** | CLI | No | Cross-agent briefing document. Narrative format for pasting into new sessions. `momento handoff` |
@@ -44,18 +46,20 @@ Every feature from v0.2 onward is a **read-path view** over existing data — or
 
 ---
 
-## v0.3 — Search + Adapters
+## v0.3 — Search + Adapters + Decay Enhancements
 
-**Trigger:** Enough entries to need better search. Multiple agents in daily use.
-**Theme:** "Find anything. Work anywhere."
+**Trigger:** Enough entries to need better search. Multiple agents in daily use. Evidence from v0.2 decay usage.
+**Theme:** "Find anything. Work anywhere. Fine-tune freshness."
 
 | Feature | Type | New Schema? | Description |
 |---------|------|-------------|-------------|
+| Decay Curve | Core | No | Three-zone soft decay (0–7d full, 7–30d gentle, 30d+ steep). Only if pure MAX proves too binary. |
+| Pinning | CLI + Core | Minor (pin flag) | `momento pin/unpin <id>`. Pinned entries sort as `freshness = now`. |
 | Vector embeddings | Core | Minor (embedding column) | Hybrid BM25 + semantic via local model. Additive. |
 | Cursor adapter | Adapter | No | Rules file integration. |
 | Aider adapter | Adapter | No | Session-oriented adapter. |
 | Windsurf adapter | Adapter | No | Instruction block adapter. |
-| **Drift Report** | CLI + MCP | Minor (last-retrieve ts) | "What changed since I was last here?" |
+| **Drift Report** | CLI + MCP | No (uses `last_retrieved_at`) | "What changed since I was last here?" |
 | **Burn Chart** | CLI | No | Feature branch arc visualization. |
 | **Health Check** | CLI | No | Memory quality signal. |
 | **Diff** | CLI | No | Knowledge delta between branches. |
@@ -66,7 +70,7 @@ Every feature from v0.2 onward is a **read-path view** over existing data — or
 
 **Trigger:** Multi-agent usage, enough data for patterns.
 
-Retrieval analytics. Promotion to CI checks. Lazy watchdog. Formal session tracking. `momento archive`.
+Retrieval analytics. Promotion to CI checks. Lazy watchdog. Formal session tracking. `momento archive`. Auto-prune suggestions (`momento prune --suggest` for entries decayed 90+ days with zero retrievals).
 
 ---
 
@@ -74,7 +78,7 @@ Retrieval analytics. Promotion to CI checks. Lazy watchdog. Formal session track
 
 **Trigger:** Patterns in what gets retrieved.
 
-Thinking trace mining. Confidence recalibration. Semantic deduplication. Knowledge decay. Auto-tracking. Multi-project snippets.
+Thinking trace mining. Confidence recalibration. Semantic deduplication. Auto-tracking. Multi-project snippets.
 
 ---
 

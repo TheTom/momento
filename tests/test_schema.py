@@ -25,7 +25,7 @@ def test_schema_fresh_db_creates_all_tables_and_wal(db_path):
     """T2.1 — Fresh DB creation
 
     DB must be created with all tables, indexes, triggers, momento_meta,
-    schema_version = 1, journal_mode = WAL.
+    schema_version = 2, journal_mode = WAL.
     """
     assert not os.path.exists(db_path), "DB should not exist before ensure_db"
 
@@ -33,12 +33,12 @@ def test_schema_fresh_db_creates_all_tables_and_wal(db_path):
 
     assert os.path.exists(db_path), "DB file must be created"
 
-    # Check schema_version = 1
+    # Check schema_version = 2 (v0.2 decay migration)
     version = conn.execute(
         "SELECT value FROM momento_meta WHERE key = 'schema_version'"
     ).fetchone()
     assert version is not None, "momento_meta must contain schema_version"
-    assert int(version[0]) == 1
+    assert int(version[0]) == 2
 
     # Check WAL mode
     journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
@@ -138,7 +138,7 @@ def test_schema_db_deleted_mid_session_recreates_cleanly(db_path):
         "SELECT value FROM momento_meta WHERE key = 'schema_version'"
     ).fetchone()
     assert version is not None
-    assert int(version[0]) == 1
+    assert int(version[0]) == 2
 
     tables = {
         row[0]
@@ -295,9 +295,9 @@ def test_run_migrations_noop_when_current_version_is_latest(db_path):
     before = conn.execute(
         "SELECT value FROM momento_meta WHERE key = 'schema_version'"
     ).fetchone()[0]
-    run_migrations(conn, 1)
+    run_migrations(conn, 2)
     after = conn.execute(
         "SELECT value FROM momento_meta WHERE key = 'schema_version'"
     ).fetchone()[0]
-    assert before == after == "1"
+    assert before == after == "2"
     conn.close()

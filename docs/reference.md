@@ -372,14 +372,25 @@ Branch: `git branch --show-current` (case-sensitive, `None` for detached HEAD).
 - `busy_timeout=5000` -- handles concurrent agent access
 
 ### Why deterministic
-- `retrieve_context()` called twice with same state = identical output
+- `retrieve_context()` called twice with same DB state = identical output
 - No probabilistic scoring, no ML, no embeddings (v0.1)
 - Retrieval count is analytics-only -- never affects ranking
 - Hard-coded tier ordering -- not learned, not adaptive
 
+### Freshness & Decay (v0.2)
+Within each tier, entries are ranked by **freshness** instead of `created_at`:
+```
+freshness = MAX(created_at, last_retrieved_at)
+```
+- Entries that keep appearing in restore stay fresh (retrieval refreshes them)
+- Entries never retrieved after creation gradually sink below newer entries
+- Decay is ranking demotion, never deletion. Decayed entries remain searchable and visible in `momento inspect`
+- Only restore inclusion refreshes freshness. Search and inspect do not.
+- Sort order: `surface_match DESC → branch_match DESC → freshness DESC → created_at DESC → id ASC`
+
 ### Restore vs Search
-- **Restore** (`query=None`): State reconstruction. Hard-coded tiers. Surface + branch preference. For session recovery.
-- **Search** (`query="..."`): Keyword search. Pure FTS5 BM25 ranking. No restore preference. For intentional queries.
+- **Restore** (`query=None`): State reconstruction. Hard-coded tiers. Surface + branch + freshness preference. For session recovery.
+- **Search** (`query="..."`): Keyword search. Pure FTS5 BM25 ranking. No restore preference. No freshness. For intentional queries.
 
 ### Deduplication
 - SHA256 content hash per project scope
