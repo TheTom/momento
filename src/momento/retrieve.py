@@ -62,21 +62,30 @@ def _tag_set(tags) -> set[str]:
     return set(tags)
 
 
+def _freshness(entry: Entry, stats: dict[str, str | None] | None) -> str:
+    """Return freshness timestamp: MAX(created_at, last_retrieved_at)."""
+    last_retrieved = stats.get(entry.id) if stats else None
+    return max(entry.created_at, last_retrieved or entry.created_at)
+
+
 def _sort_entries(
     entries: list[Entry],
     surface: str | None,
     branch: str | None,
     use_confidence: bool = False,
+    stats: dict[str, str | None] | None = None,
 ) -> list[Entry]:
-    """Sort: surface_match DESC, branch_match DESC, [confidence DESC], created_at DESC, id ASC.
+    """Sort: surface_match DESC, branch_match DESC, [confidence DESC], freshness DESC, id ASC.
 
     Uses stable multi-pass sort (Python's sort is stable).
-    When use_confidence=True, confidence is inserted between branch_match and created_at
+    When use_confidence=True, confidence is inserted between branch_match and freshness
     (used for Tier 3 decisions per PRD).
+    Freshness = MAX(created_at, last_retrieved_at) for knowledge decay.
     """
     entries = list(entries)
     entries.sort(key=lambda e: e.id)  # id ASC (final tiebreaker)
-    entries.sort(key=lambda e: e.created_at or "", reverse=True)  # created_at DESC
+    entries.sort(key=lambda e: e.created_at, reverse=True)  # created_at DESC (secondary)
+    entries.sort(key=lambda e: _freshness(e, stats), reverse=True)  # freshness DESC
     if use_confidence:
         entries.sort(key=lambda e: e.confidence, reverse=True)  # confidence DESC
     entries.sort(key=lambda e: -(1 if (branch and e.branch == branch) else 0))  # branch match DESC
@@ -165,6 +174,19 @@ def _restore_mode(
     budget_used = 0
     budget_exhausted = False
 
+    # --- Load freshness stats for sort ordering ---
+    # Gracefully handle DBs that haven't been migrated to v2 yet
+    # (last_retrieved_at column may not exist)
+    stats: dict[str, str | None] = {}
+    try:
+        stat_rows = conn.execute(
+            "SELECT entry_id, last_retrieved_at FROM knowledge_stats "
+            "WHERE last_retrieved_at IS NOT NULL"
+        ).fetchall()
+        stats = {row[0]: row[1] for row in stat_rows}
+    except sqlite3.OperationalError:
+        pass  # Column doesn't exist yet — use empty stats
+
     # --- Tier 1: session_state (48h window) ---
     if include_session_state:
         cutoff = (
@@ -175,7 +197,7 @@ def _restore_mode(
             "WHERE project_id = ? AND type = 'session_state' AND created_at >= ? ",
             (project_id, cutoff),
         ).fetchall()
-        candidates = _sort_entries([_row_to_entry(r) for r in rows], surface, branch)
+        candidates = _sort_entries([_row_to_entry(r) for r in rows], surface, branch, stats=stats)
         # Split surface-matching vs other
         surface_entries = [e for e in candidates if surface and surface in _tag_set(e.tags)]
         other_entries = [e for e in candidates if not (surface and surface in _tag_set(e.tags))]
@@ -194,7 +216,7 @@ def _restore_mode(
             "WHERE project_id = ? AND type = 'plan' ",
             (project_id,),
         ).fetchall()
-        candidates = _sort_entries([_row_to_entry(r) for r in rows], surface, branch)[:_PLAN_QUOTA]
+        candidates = _sort_entries([_row_to_entry(r) for r in rows], surface, branch, stats=stats)[:_PLAN_QUOTA]
         filled, cost = _greedy_fill(candidates, _TOKEN_BUDGET - budget_used)
         all_entries.extend(filled)
         budget_used += cost
@@ -209,7 +231,7 @@ def _restore_mode(
             (project_id,),
         ).fetchall()
         candidates = _sort_entries(
-            [_row_to_entry(r) for r in rows], surface, branch, use_confidence=True,
+            [_row_to_entry(r) for r in rows], surface, branch, use_confidence=True, stats=stats,
         )[:_DECISION_QUOTA]
         filled, cost = _greedy_fill(candidates, _TOKEN_BUDGET - budget_used)
         all_entries.extend(filled)
@@ -224,7 +246,7 @@ def _restore_mode(
             "WHERE project_id = ? AND type IN ('gotcha', 'pattern') ",
             (project_id,),
         ).fetchall()
-        candidates = _sort_entries([_row_to_entry(r) for r in rows], surface, branch)[:_GOTCHA_PATTERN_QUOTA]
+        candidates = _sort_entries([_row_to_entry(r) for r in rows], surface, branch, stats=stats)[:_GOTCHA_PATTERN_QUOTA]
         filled, cost = _greedy_fill(candidates, _TOKEN_BUDGET - budget_used)
         all_entries.extend(filled)
         budget_used += cost
@@ -286,14 +308,24 @@ def _restore_mode(
             all_entries.extend(filled)
             budget_used += cost
 
-    # --- Increment retrieval counts (in knowledge_stats, NOT knowledge) ---
+    # --- Increment retrieval counts + update last_retrieved_at (in knowledge_stats, NOT knowledge) ---
     if all_entries:
         ids = [e.id for e in all_entries]
         ph = ",".join("?" * len(ids))
-        conn.execute(
-            f"UPDATE knowledge_stats SET retrieval_count = retrieval_count + 1 WHERE entry_id IN ({ph})",
-            ids,
-        )
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            conn.execute(
+                f"UPDATE knowledge_stats SET retrieval_count = retrieval_count + 1, "
+                f"last_retrieved_at = ? WHERE entry_id IN ({ph})",
+                [now] + ids,
+            )
+        except sqlite3.OperationalError:
+            # last_retrieved_at column doesn't exist yet — fall back to count-only update
+            conn.execute(
+                f"UPDATE knowledge_stats SET retrieval_count = retrieval_count + 1 "
+                f"WHERE entry_id IN ({ph})",
+                ids,
+            )
         conn.commit()
 
     # --- Render and compute final token count ---

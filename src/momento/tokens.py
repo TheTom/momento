@@ -22,9 +22,10 @@ def format_age(iso_timestamp: str) -> str:
 
     Examples: '3d ago', '2h ago', '15m ago'.
     """
-    dt = datetime.strptime(iso_timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(
-        tzinfo=timezone.utc
-    )
+    ts = iso_timestamp.replace("Z", "+00:00")
+    dt = datetime.fromisoformat(ts)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
     delta = datetime.now(timezone.utc) - dt
     if delta.days > 0:
         return f"{delta.days}d ago"
