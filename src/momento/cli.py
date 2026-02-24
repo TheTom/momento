@@ -36,6 +36,30 @@ def _get_db_path() -> str:
 _format_age = format_age  # Backward compat alias for internal callers
 
 
+def _freshness_ts(created_at: str, last_retrieved_at: str | None) -> str:
+    """Return freshness timestamp: MAX(created_at, last_retrieved_at)."""
+    return max(created_at, last_retrieved_at or created_at)
+
+
+def _days_since(iso_timestamp: str) -> float:
+    """Return fractional days since an ISO timestamp."""
+    # Handle both 'Z' suffix and '+00:00' offset, with or without microseconds
+    ts = iso_timestamp.replace("Z", "+00:00")
+    dt = datetime.fromisoformat(ts)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - dt).total_seconds() / 86400
+
+
+def _has_last_retrieved_column(conn) -> bool:
+    """Check if knowledge_stats has the last_retrieved_at column (v2 migration)."""
+    try:
+        cols = conn.execute("PRAGMA table_info(knowledge_stats)").fetchall()
+        return any(c[1] == "last_retrieved_at" for c in cols)
+    except Exception:
+        return False
+
+
 def cmd_status(args, conn, project_id, project_name, branch):
     """Show project info, entry counts, last checkpoint, DB size."""
     # Entry counts by type
@@ -73,6 +97,39 @@ def cmd_status(args, conn, project_id, project_name, branch):
         print(f"Last checkpoint: {age_str}{stale}")
     else:
         print("Last checkpoint: none")
+
+    # Freshness buckets
+    has_freshness = _has_last_retrieved_column(conn)
+    if has_freshness:
+        cursor = conn.execute(
+            "SELECT k.created_at, s.last_retrieved_at "
+            "FROM knowledge k LEFT JOIN knowledge_stats s ON k.id = s.entry_id "
+            "WHERE k.project_id = ?",
+            (project_id,),
+        )
+    else:
+        cursor = conn.execute(
+            "SELECT created_at, NULL FROM knowledge WHERE project_id = ?",
+            (project_id,),
+        )
+    active_count = 0
+    aging_count = 0
+    decaying_count = 0
+    for row in cursor:
+        freshness = _freshness_ts(row[0], row[1])
+        days = _days_since(freshness)
+        if days <= 7:
+            active_count += 1
+        elif days <= 30:
+            aging_count += 1
+        else:
+            decaying_count += 1
+
+    if total > 0:
+        print(f"Freshness:")
+        print(f"  Active (≤7d):   {active_count:>3} entries")
+        print(f"  Aging (7-30d):  {aging_count:>3} entries")
+        print(f"  Decaying (>30d):{decaying_count:>3} entries")
 
     print(f"DB size: {db_size:,} bytes")
 
@@ -220,6 +277,21 @@ def cmd_inspect(args, conn, project_id, project_name, branch):
         print(f"Source:     {esrc}")
         print(f"Confidence: {econf}")
         print(f"Created:    {ecreated} ({_format_age(ecreated)})")
+
+        # Freshness from knowledge_stats (requires v2 migration)
+        last_retrieved = None
+        if _has_last_retrieved_column(conn):
+            stat_row = conn.execute(
+                "SELECT last_retrieved_at FROM knowledge_stats WHERE entry_id = ?",
+                (eid,),
+            ).fetchone()
+            last_retrieved = stat_row[0] if stat_row else None
+        if last_retrieved:
+            freshness = _freshness_ts(ecreated, last_retrieved)
+            fresh_days = _days_since(freshness)
+            decay_indicator = " ⚠ decaying" if fresh_days > 21 else ""
+            print(f"Fresh:      {_format_age(freshness)}{decay_indicator}")
+
         print(f"Content:\n{econtent}")
         return
 
@@ -228,28 +300,42 @@ def cmd_inspect(args, conn, project_id, project_name, branch):
     type_filter = getattr(args, "type", None)
     tags_filter = getattr(args, "tags", None)
 
+    has_freshness = _has_last_retrieved_column(conn)
+
     conditions = []
     params = []
     if not show_all:
-        conditions.append("project_id = ?")
+        conditions.append("k.project_id = ?" if has_freshness else "project_id = ?")
         params.append(project_id)
     if type_filter:
-        conditions.append("type = ?")
+        conditions.append("k.type = ?" if has_freshness else "type = ?")
         params.append(type_filter)
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    cursor = conn.execute(
-        f"SELECT type, branch, tags, created_at, content FROM knowledge "
-        f"{where} ORDER BY created_at DESC",
-        params,
-    )
+
+    # Query with IDs and freshness stats in one pass
+    if has_freshness:
+        cursor = conn.execute(
+            f"SELECT k.id, k.type, k.branch, k.tags, k.created_at, k.content, "
+            f"s.last_retrieved_at "
+            f"FROM knowledge k LEFT JOIN knowledge_stats s ON k.id = s.entry_id "
+            f"{where} ORDER BY k.created_at DESC",
+            params,
+        )
+    else:
+        cursor = conn.execute(
+            f"SELECT id, type, branch, tags, created_at, content, NULL "
+            f"FROM knowledge "
+            f"{where} ORDER BY created_at DESC",
+            params,
+        )
     rows = cursor.fetchall()
 
     # Post-filter by tag (SQLite JSON filtering is messy, simpler in Python)
     if tags_filter:
         rows = [
             r for r in rows
-            if tags_filter.lower() in [t.lower() for t in json.loads(r[2])]
+            if tags_filter.lower() in [t.lower() for t in json.loads(r[3])]
         ]
 
     if not rows:
@@ -257,11 +343,20 @@ def cmd_inspect(args, conn, project_id, project_name, branch):
         return
 
     for row in rows:
-        entry_type, entry_branch, tags_json, created_at, content = row
+        entry_id, entry_type, entry_branch, tags_json, created_at, content, last_retrieved = row
         tags = json.loads(tags_json)
         age = _format_age(created_at)
         branch_str = entry_branch or "(none)"
-        print(f"[{entry_type}] branch={branch_str} tags={tags} {age}")
+
+        # Freshness suffix (only when last_retrieved_at differs from created_at)
+        fresh_suffix = ""
+        if last_retrieved:
+            freshness = _freshness_ts(created_at, last_retrieved)
+            fresh_days = _days_since(freshness)
+            decay = " ⚠ decaying" if fresh_days > 21 else ""
+            fresh_suffix = f" | fresh: {_format_age(freshness)}{decay}"
+
+        print(f"[{entry_type}] branch={branch_str} tags={tags} {age}{fresh_suffix}")
         print(f"  {content}")
         print()
 
@@ -613,6 +708,17 @@ def cmd_debug_restore(args, conn, project_id, project_name, branch):
         include_session_state=True,
     )
 
+    # Load freshness stats for all returned entries
+    freshness_lookup: dict[str, str | None] = {}
+    if result.entries and _has_last_retrieved_column(conn):
+        ids = [e.id for e in result.entries]
+        ph = ",".join("?" * len(ids))
+        stat_rows = conn.execute(
+            f"SELECT entry_id, last_retrieved_at FROM knowledge_stats WHERE entry_id IN ({ph})",
+            ids,
+        ).fetchall()
+        freshness_lookup = {r[0]: r[1] for r in stat_rows}
+
     # Group by type for tier breakdown
     tiers = {}
     for entry in result.entries:
@@ -621,7 +727,11 @@ def cmd_debug_restore(args, conn, project_id, project_name, branch):
     for tier_type, entries in tiers.items():
         print(f"\n--- {tier_type} ({len(entries)} entries) ---")
         for e in entries:
-            print(f"  [{e.branch or 'none'}] {e.content}")
+            created_age = _format_age(e.created_at)
+            last_retrieved = freshness_lookup.get(e.id)
+            freshness = _freshness_ts(e.created_at, last_retrieved)
+            fresh_age = _format_age(freshness)
+            print(f"  [{e.branch or 'none'}] created={created_age} fresh={fresh_age} {e.content}")
 
     print(f"\nTotal: {len(result.entries)} entries, ~{result.total_tokens} tokens")
     if result.rendered:
