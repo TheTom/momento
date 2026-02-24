@@ -1,6 +1,6 @@
 # Momento — Feature Roadmap
 
-**Based on:** v0.1.3 shipped (514 tests passing, 97% coverage)
+**Based on:** v0.1.3 shipped (538 tests passing, 97% coverage)
 **Date:** February 24, 2026
 
 ---
@@ -17,16 +17,16 @@ Every feature from v0.2 onward is a **read-path view** over existing data — or
 
 ---
 
-## v0.2 — Snippets + Developer Views
+## v0.2 — Decay + Developer Views
 
-**Trigger:** v0.1 stable, daily use generating entries
-**Theme:** "Ask questions of your own memory"
+**Trigger:** v0.1 stable, daily use generating entries, knowledge base growing
+**Theme:** "Memory that stays relevant without manual pruning"
 
 | Feature | Type | New Schema? | Description |
 |---------|------|-------------|-------------|
 | ~~**Snippets**~~ | CLI + MCP | No | ~~Daily/weekly/custom work summaries. Standup, markdown, slack, JSON formats.~~ **SHIPPED v0.1.1** |
 | ~~**CLAUDE.md Audit**~~ | CLI | No | ~~Compare Momento knowledge against CLAUDE.md, identify gaps, optionally patch.~~ **SHIPPED v0.1.3** |
-| **Knowledge Decay** | Core | Minor (`knowledge_stats`) | Freshness-based ranking demotion within tiers. `MAX(created_at, last_retrieved_at)`. [PRD](prd-momento-decay.md) |
+| ~~**Knowledge Decay**~~ | Core | Minor (`knowledge_stats`) | ~~Freshness-based ranking demotion within tiers. `MAX(created_at, last_retrieved_at)`.~~ **IMPLEMENTED** [PRD](prd-momento-decay.md) |
 | **Decision Log** | CLI | No | Chronological decision history with rejected alternatives. Branch-filterable. `momento decisions` |
 | **Gotcha Map** | CLI | No | Surface-scoped pitfall reference. All gotchas grouped by surface. `momento gotchas` |
 | **Handoff** | CLI | No | Cross-agent briefing document. Narrative format for pasting into new sessions. `momento handoff` |
@@ -35,14 +35,16 @@ Every feature from v0.2 onward is a **read-path view** over existing data — or
 | Custom surface mappings | Config | No | `.momento/config.toml` for project-specific surface keywords beyond the default 4. |
 | `momento port` | CLI | No | Export CLAUDE.md-compatible instruction block for the current project. |
 
-**Ship criteria:** Snippets daily digest works reliably on real project data. All features are read-only views over existing v0.1 schema.
+**Ship criteria:** Decay working in dogfood. Developer views are read-only over existing schema (minor additive schema changes allowed).
 
 **Implementation order:**
 1. ~~Snippets (CLI + MCP)~~ — **DONE**
-2. Decision Log + Gotcha Map — trivial once Snippets query infrastructure exists
-3. Momentum — shares same time-range query patterns
-4. Handoff + Export — different templates over same data
-5. Custom surface mappings + `momento port`
+2. ~~CLAUDE.md Audit~~ — **DONE**
+3. ~~Knowledge Decay~~ — **DONE**
+4. Decision Log + Gotcha Map — trivial once Snippets query infrastructure exists
+5. Momentum — shares same time-range query patterns
+6. Handoff + Export — different templates over same data
+7. Custom surface mappings + `momento port`
 
 ---
 
