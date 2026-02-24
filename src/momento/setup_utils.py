@@ -286,12 +286,16 @@ def _is_momento_hook(hook_config: dict) -> bool:
     return False
 
 
+_PERMISSION_ENTRY = "mcp__momento"
+
+
 def register_hooks(settings_path: str) -> bool:
-    """Register Momento hooks in ~/.claude/settings.json.
+    """Register Momento hooks and permissions in ~/.claude/settings.json.
 
     Adds:
     - Stop hook: checkpoint staleness guard (blocks if no checkpoint in 30+ min)
     - SessionStart hooks: context recovery reminders after compact/resume
+    - Permission: mcp__momento in permissions.allow
 
     Idempotent — removes existing Momento hooks before adding fresh ones.
 
@@ -328,6 +332,12 @@ def register_hooks(settings_path: str) -> bool:
             "hooks": [{"type": "command", "command": _SESSION_RESTORE_RESUME_CMD}],
         })
 
+        # Add mcp__momento to permissions.allow
+        perms = data.setdefault("permissions", {})
+        allow = perms.setdefault("allow", [])
+        if _PERMISSION_ENTRY not in allow:
+            allow.append(_PERMISSION_ENTRY)
+
         _write_json_atomic(settings_path, data)
         return True
     except Exception:
@@ -335,10 +345,11 @@ def register_hooks(settings_path: str) -> bool:
 
 
 def unregister_hooks(settings_path: str) -> bool:
-    """Remove Momento hooks from ~/.claude/settings.json.
+    """Remove Momento hooks and permissions from ~/.claude/settings.json.
 
     Removes any hook config whose command contains 'momento'
-    (but not 'claude_terminal'). Preserves all other hooks.
+    (but not 'claude_terminal'). Removes mcp__momento from permissions.allow.
+    Preserves all other hooks and permissions.
 
     Returns True on success (including noop), False on error.
     """
@@ -361,6 +372,17 @@ def unregister_hooks(settings_path: str) -> bool:
                 # Clean up empty arrays
                 if not hooks[event]:
                     del hooks[event]
+
+        # Remove mcp__momento from permissions.allow
+        allow = data.get("permissions", {}).get("allow", [])
+        if _PERMISSION_ENTRY in allow:
+            allow.remove(_PERMISSION_ENTRY)
+            changed = True
+            # Clean up empty permissions
+            if not allow:
+                data.get("permissions", {}).pop("allow", None)
+            if not data.get("permissions"):
+                data.pop("permissions", None)
 
         if changed:
             _write_json_atomic(settings_path, data)

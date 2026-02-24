@@ -590,7 +590,7 @@ class TestRegisterHooks:
 
     @pytest.mark.should_pass
     def test_creates_hooks_in_new_file(self, tmp_path):
-        """Creates settings.json with hooks from scratch."""
+        """Creates settings.json with hooks and permissions from scratch."""
         settings = tmp_path / "settings.json"
 
         result = register_hooks(str(settings))
@@ -599,6 +599,7 @@ class TestRegisterHooks:
         data = json.loads(settings.read_text())
         assert len(data["hooks"]["Stop"]) == 1
         assert len(data["hooks"]["SessionStart"]) == 2  # compact + resume
+        assert "mcp__momento" in data["permissions"]["allow"]
 
     @pytest.mark.should_pass
     def test_preserves_existing_hooks(self, tmp_path):
@@ -625,7 +626,7 @@ class TestRegisterHooks:
 
     @pytest.mark.should_pass
     def test_idempotent(self, tmp_path):
-        """Calling twice doesn't duplicate Momento hooks."""
+        """Calling twice doesn't duplicate Momento hooks or permissions."""
         settings = tmp_path / "settings.json"
 
         register_hooks(str(settings))
@@ -635,6 +636,8 @@ class TestRegisterHooks:
         # Should still be exactly 1 Momento Stop hook, 2 SessionStart hooks
         assert len(data["hooks"]["Stop"]) == 1
         assert len(data["hooks"]["SessionStart"]) == 2
+        # Permission should appear exactly once
+        assert data["permissions"]["allow"].count("mcp__momento") == 1
 
     @pytest.mark.should_pass
     def test_stop_hook_contains_check_stale(self, tmp_path):
@@ -676,8 +679,8 @@ class TestUnregisterHooks:
     """Tests for unregister_hooks()."""
 
     @pytest.mark.should_pass
-    def test_removes_momento_hooks_only(self, tmp_path):
-        """Removes Momento hooks, keeps non-Momento hooks intact."""
+    def test_removes_momento_hooks_and_permission_only(self, tmp_path):
+        """Removes Momento hooks and permission, keeps everything else intact."""
         settings = tmp_path / "settings.json"
         data = {
             "hooks": {
@@ -689,7 +692,8 @@ class TestUnregisterHooks:
                     {"matcher": "", "hooks": [{"type": "command", "command": "echo start"}]},
                     {"matcher": "compact", "hooks": [{"type": "command", "command": "echo 'momento recovery'"}]},
                 ],
-            }
+            },
+            "permissions": {"allow": ["mcp__pencil", "mcp__momento"]},
         }
         settings.write_text(json.dumps(data))
 
@@ -701,10 +705,13 @@ class TestUnregisterHooks:
         assert "other" in out["hooks"]["Stop"][0]["hooks"][0]["command"]
         assert len(out["hooks"]["SessionStart"]) == 1
         assert out["hooks"]["SessionStart"][0]["hooks"][0]["command"] == "echo start"
+        # mcp__momento removed, mcp__pencil preserved
+        assert "mcp__momento" not in out["permissions"]["allow"]
+        assert "mcp__pencil" in out["permissions"]["allow"]
 
     @pytest.mark.should_pass
-    def test_cleans_up_empty_arrays(self, tmp_path):
-        """Removes empty hook arrays after unregistering."""
+    def test_cleans_up_empty_arrays_and_permissions(self, tmp_path):
+        """Removes empty hook arrays and mcp__momento permission after unregistering."""
         settings = tmp_path / "settings.json"
         register_hooks(str(settings))
 
@@ -714,6 +721,8 @@ class TestUnregisterHooks:
         out = json.loads(settings.read_text())
         assert "Stop" not in out.get("hooks", {})
         assert "SessionStart" not in out.get("hooks", {})
+        # Permission should be removed, empty permissions cleaned up
+        assert "permissions" not in out
 
     @pytest.mark.should_pass
     def test_noop_when_file_missing(self, tmp_path):
