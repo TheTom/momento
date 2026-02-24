@@ -215,7 +215,7 @@ class TestLogKnowledge:
     @patch("momento.mcp_server.identity.resolve_branch", return_value="main")
     @patch("momento.mcp_server.identity.resolve_project_id", return_value=("proj-1", "test-proj"))
     @patch("os.getcwd", return_value="/fake/project")
-    def test_returns_json_with_id(
+    def test_returns_terse_ack(
         self, mock_cwd, mock_pid, mock_branch, mock_store, mock_db
     ):
         mock_conn = MagicMock()
@@ -228,9 +228,7 @@ class TestLogKnowledge:
             tags=["stripe", "server"],
         )
 
-        parsed = json.loads(result)
-        assert parsed["id"] == "abc-123"
-        assert parsed["status"] == "created"
+        assert result == "✓ gotcha"
         mock_conn.close.assert_called_once()
 
     @patch("momento.mcp_server.db.ensure_db")
@@ -286,10 +284,8 @@ class TestLogKnowledge:
             tags=["test"],
         )
 
-        parsed = json.loads(result)
-        assert "error" in parsed
-        assert "too long" in parsed["error"]
-        assert "hint" in parsed
+        assert "too long" in result.lower()
+        assert "Hint:" in result
         mock_conn.close.assert_called_once()
 
     @patch("momento.mcp_server.db.ensure_db")
@@ -311,9 +307,7 @@ class TestLogKnowledge:
             tags=["test"],
         )
 
-        parsed = json.loads(result)
-        assert parsed["status"] == "duplicate_skipped"
-        assert parsed["id"] == "existing-id"
+        assert result == "skip (dup)"
 
     @patch("momento.mcp_server.db.ensure_db")
     @patch("momento.mcp_server.store.log_knowledge", side_effect=Exception("write failed"))
@@ -349,8 +343,7 @@ class TestLogKnowledge:
 
         _, kwargs = mock_store.call_args
         assert kwargs["branch"] is None
-        parsed = json.loads(result)
-        assert parsed["status"] == "created"
+        assert result == "✓ pattern"
 
 
 # ---------------------------------------------------------------------------
@@ -369,13 +362,12 @@ class TestIntegration:
         """Store an entry, then retrieve it — full round trip."""
         with patch.dict(os.environ, {"MOMENTO_DB": db_path}):
             # Store
-            store_result = json.loads(log_knowledge(
+            store_result = log_knowledge(
                 content="Integration: always verify webhook signatures.",
                 type="gotcha",
                 tags=["server", "webhook"],
-            ))
-            assert store_result["status"] == "created"
-            assert "id" in store_result
+            )
+            assert store_result == "✓ gotcha"
 
             # Retrieve
             rendered = retrieve_context()
@@ -386,16 +378,15 @@ class TestIntegration:
     @patch("momento.mcp_server.identity.resolve_project_id", return_value=("int-proj", "integration"))
     @patch("os.getcwd", return_value="/fake/project")
     def test_store_duplicate_returns_skipped(self, mock_cwd, mock_pid, mock_branch, mock_surface, db_path):
-        """Storing the same content twice should return duplicate_skipped."""
+        """Storing the same content twice should return terse skip."""
         with patch.dict(os.environ, {"MOMENTO_DB": db_path}):
             content = "Dedup test: use PKCE for all OAuth clients."
 
-            first = json.loads(log_knowledge(content=content, type="decision", tags=["auth"]))
-            assert first["status"] == "created"
+            first = log_knowledge(content=content, type="decision", tags=["auth"])
+            assert first == "✓ decision"
 
-            second = json.loads(log_knowledge(content=content, type="decision", tags=["auth"]))
-            assert second["status"] == "duplicate_skipped"
-            assert second["id"] == first["id"]
+            second = log_knowledge(content=content, type="decision", tags=["auth"])
+            assert second == "skip (dup)"
 
     @patch("momento.mcp_server.surface.detect_surface", return_value=None)
     @patch("momento.mcp_server.identity.resolve_branch", return_value="main")
@@ -405,10 +396,9 @@ class TestIntegration:
         """Content exceeding size limit should be rejected with error+hint."""
         with patch.dict(os.environ, {"MOMENTO_DB": db_path}):
             oversized = "x" * (SIZE_LIMITS["gotcha"] + 1)
-            result = json.loads(log_knowledge(content=oversized, type="gotcha", tags=["test"]))
-            assert "error" in result
-            assert "too long" in result["error"].lower()
-            assert "hint" in result
+            result = log_knowledge(content=oversized, type="gotcha", tags=["test"])
+            assert "too long" in result.lower()
+            assert "Hint:" in result
 
     @patch("momento.mcp_server.surface.detect_surface", return_value=None)
     @patch("momento.mcp_server.identity.resolve_branch", return_value="main")

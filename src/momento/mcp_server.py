@@ -89,7 +89,15 @@ def log_knowledge(content: str, type: str, tags: list[str]) -> str:
             confidence=0.9,
             enforce_limits=True,
         )
-        return json.dumps(result)
+        # Terse responses — keep UI noise low
+        if "error" in result:
+            msg = result["error"]
+            if "hint" in result:
+                msg += f"\nHint: {result['hint']}"
+            return msg
+        if result.get("status") == "duplicate_skipped":
+            return "skip (dup)"
+        return f"✓ {type}"
     finally:
         conn.close()
 
