@@ -8,7 +8,9 @@ Tests for `momento status`, `momento save`, `momento undo`,
 """
 
 import json
+import os
 import subprocess
+import time
 from types import SimpleNamespace
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, MagicMock
@@ -31,6 +33,9 @@ from momento.cli import (
     _format_age,
     _get_db_path,
     _parse_duration,
+    _cooldown_path,
+    _check_cooldown,
+    _set_cooldown,
 )
 from momento.store import log_knowledge
 from momento.db import ensure_db
@@ -1405,6 +1410,14 @@ class TestParseDuration:
 class TestCmdCheckStale:
     """Cover cmd_check_stale (checkpoint freshness check for hooks)."""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_cooldown(self, tmp_path, monkeypatch):
+        """Redirect cooldown files to tmp_path so tests don't leak."""
+        monkeypatch.setattr(
+            "momento.cli._cooldown_path",
+            lambda pid: str(tmp_path / f"momento_stale_{pid[:16]}"),
+        )
+
     @pytest.mark.should_pass
     def test_fresh_checkpoint(self, db, capsys):
         """Recent checkpoint exits 0 and prints 'fresh'."""
@@ -1486,3 +1499,70 @@ class TestCmdCheckStale:
         with pytest.raises(SystemExit) as exc_info:
             cmd_check_stale(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
         assert exc_info.value.code == 1
+
+    @pytest.mark.must_pass
+    def test_cooldown_breaks_infinite_loop(self, db, capsys):
+        """After one stale reminder, cooldown allows exit (prevents infinite loop)."""
+        entry = make_entry(
+            content="Old checkpoint.",
+            type="session_state",
+            tags=["server"],
+            branch="main",
+            created_at=hours_ago(2),
+        )
+        insert_entry(db, entry)
+        db.commit()
+
+        args = SimpleNamespace(threshold=30)
+
+        # First call: stale → exits 1 and sets cooldown
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_check_stale(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        assert exc_info.value.code == 1
+
+        # Second call: cooldown active → exits 0 (breaks the loop)
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_check_stale(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        assert "cooldown" in out
+
+    @pytest.mark.must_pass
+    def test_cooldown_expires(self, db, capsys, tmp_path):
+        """Cooldown expires after the timeout, allowing re-enforcement."""
+        lock = tmp_path / f"momento_stale_{MOCK_PROJECT_ID[:16]}"
+        lock.write_text("0")
+        old_time = time.time() - 600
+        os.utime(lock, (old_time, old_time))
+
+        entry = make_entry(
+            content="Old checkpoint.",
+            type="session_state",
+            tags=["server"],
+            branch="main",
+            created_at=hours_ago(2),
+        )
+        insert_entry(db, entry)
+        db.commit()
+
+        args = SimpleNamespace(threshold=30)
+
+        # Cooldown expired → should block again (exit 1)
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_check_stale(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        assert exc_info.value.code == 1
+
+    @pytest.mark.must_pass
+    def test_no_checkpoint_sets_cooldown(self, db, capsys):
+        """No checkpoint also sets cooldown to prevent loops."""
+        args = SimpleNamespace(threshold=30)
+
+        # First call: no checkpoint → exit 1
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_check_stale(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        assert exc_info.value.code == 1
+
+        # Second call: cooldown active → exit 0
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_check_stale(args, db, MOCK_PROJECT_ID, MOCK_PROJECT_NAME, "main")
+        assert exc_info.value.code == 0

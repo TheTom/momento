@@ -7,6 +7,8 @@ import argparse
 import json
 import os
 import sys
+import tempfile
+import time
 from datetime import datetime, timezone, timedelta
 
 from momento.db import ensure_db
@@ -573,14 +575,55 @@ def cmd_snippet(args, conn, project_id, project_name, branch):
     print(output, end="")
 
 
+def _cooldown_path(project_id: str) -> str:
+    """Return path to the cooldown lock file for this project."""
+    safe_id = project_id[:16] if project_id else "unknown"
+    return os.path.join(tempfile.gettempdir(), f"momento_stale_{safe_id}")
+
+
+def _check_cooldown(project_id: str, cooldown_seconds: int = 300) -> bool:
+    """Return True if we're in cooldown (already reminded recently).
+
+    Prevents infinite stop-hook loops: after one stale reminder,
+    allow exit for the next `cooldown_seconds` (default 5 min).
+    """
+    lock = _cooldown_path(project_id)
+    if not os.path.exists(lock):
+        return False
+    try:
+        lock_age = time.time() - os.path.getmtime(lock)
+        return lock_age < cooldown_seconds
+    except OSError:
+        return False
+
+
+def _set_cooldown(project_id: str) -> None:
+    """Write/touch the cooldown lock file."""
+    lock = _cooldown_path(project_id)
+    try:
+        with open(lock, "w") as f:
+            f.write(str(int(time.time())))
+    except OSError:
+        pass  # Best effort — tmp dir issues shouldn't crash the hook
+
+
 def cmd_check_stale(args, conn, project_id, project_name, branch):
     """Check if the last session_state checkpoint is stale.
 
     Exits 0 if fresh (< threshold), exits 1 if stale or no checkpoint.
     Designed for use in Claude Code hooks.
+
+    Includes cooldown logic to prevent infinite stop-hook loops:
+    after blocking once for staleness, allows exit for 5 minutes
+    so the agent isn't trapped.
     """
     threshold_minutes = getattr(args, "threshold", 30)
     threshold = timedelta(minutes=threshold_minutes)
+
+    # Cooldown check: if we already reminded recently, don't block again
+    if _check_cooldown(project_id):
+        print(f"fresh: cooldown active (already reminded)")
+        sys.exit(0)
 
     cursor = conn.execute(
         "SELECT MAX(created_at) FROM knowledge WHERE project_id = ? AND type = 'session_state'",
@@ -589,6 +632,7 @@ def cmd_check_stale(args, conn, project_id, project_name, branch):
     last_checkpoint = cursor.fetchone()[0]
 
     if not last_checkpoint:
+        _set_cooldown(project_id)
         print(f"no checkpoint found", file=sys.stderr)
         sys.exit(1)
 
@@ -599,6 +643,7 @@ def cmd_check_stale(args, conn, project_id, project_name, branch):
     age_minutes = int(age.total_seconds() / 60)
 
     if age > threshold:
+        _set_cooldown(project_id)
         print(f"stale: {age_minutes}m since last checkpoint (threshold: {threshold_minutes}m)", file=sys.stderr)
         sys.exit(1)
     else:
