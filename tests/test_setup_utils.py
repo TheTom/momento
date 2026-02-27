@@ -562,7 +562,7 @@ class TestSetupUtilsMain:
             main()
 
         data = json.loads(settings.read_text())
-        assert "Stop" in data["hooks"]
+        assert "Stop" not in data["hooks"]
         assert "SessionStart" in data["hooks"]
 
     @pytest.mark.should_pass
@@ -597,7 +597,7 @@ class TestRegisterHooks:
 
         assert result is True
         data = json.loads(settings.read_text())
-        assert len(data["hooks"]["Stop"]) == 1
+        assert "Stop" not in data["hooks"]  # No stop hook (removed — caused junk entries)
         assert len(data["hooks"]["SessionStart"]) == 2  # compact + resume
         assert "mcp__momento" in data["permissions"]["allow"]
 
@@ -617,8 +617,9 @@ class TestRegisterHooks:
 
         assert result is True
         data = json.loads(settings.read_text())
-        # Existing Stop hook + Momento Stop hook
-        assert len(data["hooks"]["Stop"]) == 2
+        # Existing Stop hook preserved, no Momento stop hook added
+        assert len(data["hooks"]["Stop"]) == 1
+        assert data["hooks"]["Stop"][0]["hooks"][0]["command"] == "echo other"
         # PreToolUse untouched
         assert len(data["hooks"]["PreToolUse"]) == 1
         # SessionStart added fresh
@@ -633,22 +634,20 @@ class TestRegisterHooks:
         register_hooks(str(settings))
 
         data = json.loads(settings.read_text())
-        # Should still be exactly 1 Momento Stop hook, 2 SessionStart hooks
-        assert len(data["hooks"]["Stop"]) == 1
+        # Should still be exactly 2 SessionStart hooks, no Stop hook
+        assert "Stop" not in data["hooks"]
         assert len(data["hooks"]["SessionStart"]) == 2
         # Permission should appear exactly once
         assert data["permissions"]["allow"].count("mcp__momento") == 1
 
     @pytest.mark.should_pass
-    def test_stop_hook_contains_check_stale(self, tmp_path):
-        """Stop hook command references momento check-stale."""
+    def test_no_stop_hook_registered(self, tmp_path):
+        """No stop hook — removed to prevent junk checkpoint entries."""
         settings = tmp_path / "settings.json"
         register_hooks(str(settings))
 
         data = json.loads(settings.read_text())
-        stop_cmd = data["hooks"]["Stop"][0]["hooks"][0]["command"]
-        assert "check-stale" in stop_cmd
-        assert "CHECKPOINT REQUIRED" in stop_cmd
+        assert "Stop" not in data["hooks"]
 
     @pytest.mark.should_pass
     def test_session_start_hooks_have_matchers(self, tmp_path):

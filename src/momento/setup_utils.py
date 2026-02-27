@@ -257,12 +257,8 @@ def remove_claude_adapter(claude_md_path: str) -> bool:
 # ---------------------------------------------------------------------------
 
 # Inline commands — no separate scripts needed, uses `momento` CLI on PATH.
-_STOP_HOOK_CMD = (
-    'momento check-stale --threshold 30 >/dev/null 2>&1 || '
-    '(echo \'CHECKPOINT REQUIRED: No Momento checkpoint in 30+ minutes. '
-    'Call log_knowledge(type="session_state", tags=[<relevant domains>]) '
-    'with what was done, decisions made, and what is next.\' >&2; exit 2)'
-)
+# NOTE: Stop hook removed — it created junk "Idle" entries (75% of all
+# session_state). Checkpoint discipline now relies on CLAUDE.md adapter only.
 
 _SESSION_RESTORE_COMPACT_CMD = (
     "echo 'CONTEXT RECOVERY: Session restored after compaction. "
@@ -293,7 +289,6 @@ def register_hooks(settings_path: str) -> bool:
     """Register Momento hooks and permissions in ~/.claude/settings.json.
 
     Adds:
-    - Stop hook: checkpoint staleness guard (blocks if no checkpoint in 30+ min)
     - SessionStart hooks: context recovery reminders after compact/resume
     - Permission: mcp__momento in permissions.allow
 
@@ -316,11 +311,9 @@ def register_hooks(settings_path: str) -> bool:
         for event in ("Stop", "SessionStart"):
             if event in hooks:
                 hooks[event] = [h for h in hooks[event] if not _is_momento_hook(h)]
-
-        # Add Stop checkpoint guard
-        hooks.setdefault("Stop", []).append({
-            "hooks": [{"type": "command", "command": _STOP_HOOK_CMD}],
-        })
+                # Clean up empty arrays
+                if not hooks[event]:
+                    del hooks[event]
 
         # Add SessionStart recovery (compact + resume)
         hooks.setdefault("SessionStart", []).append({

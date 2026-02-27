@@ -1,21 +1,21 @@
 # Momento
 
+> **Deprecated.** Claude Code now ships native auto memory that covers the core use case. See [Claude Code Memory Documentation](https://code.claude.com/docs/en/memory). This project is no longer maintained.
+
 **Deterministic State Recovery for AI Coding Agents**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests: 514 passing](https://img.shields.io/badge/tests-538_passing-brightgreen.svg)](tests/)
+[![Tests: 538 passing](https://img.shields.io/badge/tests-538_passing-brightgreen.svg)](tests/)
 [![Coverage: 97%](https://img.shields.io/badge/coverage-97%25-brightgreen.svg)](tests/)
 
 ---
 
 ## Status
 
-**v0.1.3 shipped. In dogfood.** CLAUDE.md audit landed — `momento audit-claude-md` compares durable Momento entries against CLAUDE.md, reports gaps both directions, checks global adapter health, optionally patches the file. Snippets for work summaries. Checkpoint enforcement hooks. Pre-push hook gates all pushes on license headers, passing tests, and 95% coverage. 538 tests, 97% coverage.
+**Sunset.** Claude Code's built-in [auto memory](https://code.claude.com/docs/en/memory) now provides per-project persistent memory, automatic context saving, and session-start loading — the core loop Momento was built for. Use Claude's native memory going forward.
 
-**v0.1.2 fixes:**
-- **FTS5 search**: Multi-word queries now use OR semantics instead of implicit AND — entries matching *any* search term are returned, then ranked by relevance overlap. Previously, searching "rsync deploy gotchas" required ALL words present in a single entry.
-- **MCP error messages**: `log_knowledge` now validates entry type upfront and returns specific constraint errors (e.g., `"Invalid type: 'knowledge'. Valid types: session_state, decision, plan, gotcha, pattern"`) instead of the opaque `"Integrity constraint violation during insert."`
+Momento validated the concept: structured knowledge types, deterministic restore, cross-project context, and work summaries. The 80% use case is now native.
 
 ---
 
